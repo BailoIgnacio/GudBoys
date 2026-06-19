@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SDD Viewer — Gud Boys Refugio Animal</title>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+<style>
+  :root {
+    --bg: #0f1117;
+    --sidebar-bg: #1a1d27;
+    --card-bg: #1e2130;
+    --border: #2d3148;
+    --accent: #7c6af7;
+    --accent2: #4ecdc4;
+    --text: #e2e8f0;
+    --text-muted: #94a3b8;
+    --code-bg: #12151f;
+    --tab-active: #7c6af7;
+    --tag-inferred: #f59e0b;
+    --tag-todo: #ef4444;
+    --tag-confirmed: #10b981;
+    --tag-assumption: #3b82f6;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; display: flex; flex-direction: column; min-height: 100vh; }
+  header { background: var(--sidebar-bg); border-bottom: 1px solid var(--border); padding: 16px 24px; display: flex; align-items: center; gap: 16px; position: sticky; top: 0; z-index: 100; }
+  header h1 { font-size: 1.1rem; font-weight: 600; color: var(--text); }
+  header .subtitle { color: var(--text-muted); font-size: 0.8rem; }
+  header .badge { background: var(--accent); color: white; font-size: 0.7rem; padding: 2px 8px; border-radius: 99px; font-weight: 600; }
+  .tabs { display: flex; gap: 4px; margin-left: auto; }
+  .tab-btn { background: transparent; border: 1px solid var(--border); color: var(--text-muted); padding: 6px 16px; border-radius: 6px; cursor: pointer; font-size: 0.85rem; transition: all 0.15s; }
+  .tab-btn.active { background: var(--tab-active); border-color: var(--tab-active); color: white; }
+  .layout { display: flex; flex: 1; }
+  nav { width: 240px; min-width: 240px; background: var(--sidebar-bg); border-right: 1px solid var(--border); padding: 16px 0; position: sticky; top: 57px; height: calc(100vh - 57px); overflow-y: auto; }
+  nav h3 { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); padding: 0 16px 8px; }
+  nav a { display: block; padding: 5px 16px; font-size: 0.82rem; color: var(--text-muted); text-decoration: none; border-left: 2px solid transparent; transition: all 0.15s; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  nav a:hover { color: var(--text); border-left-color: var(--accent); background: rgba(124,106,247,0.08); }
+  nav a.h3-link { padding-left: 28px; font-size: 0.78rem; }
+  main { flex: 1; padding: 32px 40px; max-width: 900px; overflow-x: hidden; }
+  .content h1 { font-size: 1.6rem; font-weight: 700; color: var(--text); margin-bottom: 4px; }
+  .content > blockquote { border-left: 3px solid var(--accent); padding: 8px 16px; background: rgba(124,106,247,0.08); border-radius: 0 6px 6px 0; margin-bottom: 24px; color: var(--text-muted); font-size: 0.85rem; }
+  .content h2 { font-size: 1.15rem; font-weight: 600; color: var(--accent2); margin: 32px 0 12px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+  .content h3 { font-size: 0.95rem; font-weight: 600; color: var(--accent); margin: 20px 0 8px; }
+  .content h4 { font-size: 0.9rem; font-weight: 600; color: var(--text); margin: 16px 0 8px; }
+  .content p { line-height: 1.7; color: var(--text); margin-bottom: 12px; font-size: 0.9rem; }
+  .content ul, .content ol { padding-left: 20px; margin-bottom: 12px; }
+  .content li { line-height: 1.7; font-size: 0.9rem; color: var(--text); margin-bottom: 4px; }
+  .content table { width: 100%; border-collapse: collapse; margin-bottom: 16px; font-size: 0.85rem; }
+  .content th { background: var(--card-bg); color: var(--accent2); text-align: left; padding: 8px 12px; border: 1px solid var(--border); font-weight: 600; }
+  .content td { padding: 8px 12px; border: 1px solid var(--border); vertical-align: top; }
+  .content tr:nth-child(even) td { background: rgba(255,255,255,0.02); }
+  .content code { background: var(--code-bg); color: #e879f9; padding: 1px 6px; border-radius: 4px; font-family: 'Cascadia Code', 'Fira Code', monospace; font-size: 0.82em; }
+  .content pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px; padding: 16px; overflow-x: auto; margin-bottom: 16px; }
+  .content pre code { background: none; color: #a5f3fc; padding: 0; font-size: 0.83rem; line-height: 1.5; }
+  .content blockquote { border-left: 3px solid var(--accent); padding: 8px 16px; background: rgba(124,106,247,0.06); border-radius: 0 6px 6px 0; margin-bottom: 12px; }
+  .content hr { border: none; border-top: 1px solid var(--border); margin: 24px 0; }
+  .content strong { color: var(--text); font-weight: 600; }
+  .content a { color: var(--accent); text-decoration: none; }
+  .content input[type="checkbox"] { margin-right: 6px; }
+  .mermaid { background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin: 16px 0; overflow-x: auto; }
+  [data-tag="INFERRED"] { background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.3); color: var(--tag-inferred); font-size: 0.72rem; padding: 1px 5px; border-radius: 4px; font-weight: 600; }
+  [data-tag="TODO"] { background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); color: var(--tag-todo); font-size: 0.72rem; padding: 1px 5px; border-radius: 4px; font-weight: 600; }
+  [data-tag="CONFIRMED"] { background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.3); color: var(--tag-confirmed); font-size: 0.72rem; padding: 1px 5px; border-radius: 4px; font-weight: 600; }
+  [data-tag="ASSUMPTION"] { background: rgba(59,130,246,0.1); border: 1px solid rgba(59,130,246,0.3); color: var(--tag-assumption); font-size: 0.72rem; padding: 1px 5px; border-radius: 4px; font-weight: 600; }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>Gud Boys — Refugio Animal</h1>
+    <div class="subtitle">Generado el 2026-06-19 &nbsp;|&nbsp; SDD v1.0</div>
+  </div>
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab('functional')">Spec Funcional</button>
+    <button class="tab-btn" onclick="switchTab('technical')">Spec Técnico</button>
+  </div>
+</header>
+<div class="layout">
+  <nav id="sidebar">
+    <h3>Navegación</h3>
+    <div id="nav-links"></div>
+  </nav>
+  <main>
+    <div class="content" id="content-area"></div>
+  </main>
+</div>
+
+<script>
+const FUNCTIONAL = `
+# Functional Spec — Gud Boys (Refugio Animal)
+> Version: 1.0 | Fecha: 2026-06-19 | Estado: Draft
+
+## 1. Propósito y Resumen
+
+**Gud Boy** es una cadena de refugios animales que necesita un sistema para:
+- Gestionar el ingreso y seguimiento médico de animales (domésticos y salvajes)
+- Administrar alarmas de control veterinario y tratamientos
+- Manejar el proceso de adopción de animales domésticos
+- Coordinar visitas de seguimiento post-adopción
+
+El sistema interactúa con un módulo externo de autenticación y con servicios de notificación (push, SMS, WhatsApp, email).
+
+---
+
+## 2. Usuarios y Actores
+
+| Actor | Descripción |
+|-------|-------------|
+| **Veterinario** | Crea alarmas, atiende alertas, completa fichas médicas |
+| **Visitador** | Realiza visitas domiciliarias post-adopción, completa encuestas |
+| **Sistema de Autenticación (externo)** | Gestiona login/registro. Nuestro sistema solo guarda una referencia (\`externalId\`) |
+| **Adoptante** | Cliente que adopta un animal doméstico |
+| **Sistema de Notificaciones (externo)** | Firebase (push), SMS, WhatsApp, Email |
+
+---
+
+## 3. Casos de Uso
+
+### CU-01 — Ingresar Animal al Refugio
+**Actor:** Veterinario
+
+1. El veterinario carga: tipo (doméstico/salvaje), especie, altura, peso, edad, condición médica.
+2. El sistema crea \`AnimalDomestico\` o \`AnimalSalvaje\`.
+3. Se genera automáticamente una \`FichaMedica\` vacía.
+
+**Reglas:** RN-01, RN-02
+
+### CU-02 — Exportar Ficha Médica
+**Actor:** Veterinario
+
+1. Se selecciona el animal y el formato (PDF o Excel).
+2. El sistema delega al exportador correspondiente (\`ExportadorPDF\` / \`ExportadorExcel\`).
+
+**Reglas:** RN-03
+
+### CU-03 — Crear/Actualizar Alarma de Control
+**Actor:** Veterinario
+
+1. El veterinario configura: periodicidad (días), si es tratamiento médico, acciones.
+2. La alarma se guarda con estado \`ACTIVA\`.
+
+**Reglas:** RN-04, RN-07
+
+### CU-04 — Disparar y Atender Alarma
+**Actor:** Sistema + Veterinario
+
+1. El sistema dispara la alarma → genera \`Alerta\` → push notification a todos los veterinarios.
+2. Un veterinario atiende: marca acciones completadas, deja comentario.
+3. Si es tratamiento, indica si finalizó → alarma pasa a \`FINALIZADA\` y el animal queda libre.
+
+**Reglas:** RN-04, RN-05, RN-06, RN-07
+
+### CU-05 — Registrar Adopción
+**Actor:** Empleado/Veterinario
+
+1. Se cargan datos del adoptante.
+2. Se valida que el animal sea adoptable (no salvaje, no bajo tratamiento, adoptante < 2 adopciones).
+
+**Reglas:** RN-08, RN-09, RN-10
+
+### CU-06 — Configurar Seguimiento de Visitas
+**Actor:** Empleado/Veterinario
+
+1. Se asigna visitador responsable, cadencia de visitas y preferencia de recordatorio.
+
+**Reglas:** RN-11, RN-12
+
+### CU-07 — Registrar Visita Domiciliaria
+**Actor:** Visitador
+
+1. El visitador completa la encuesta (estado animal, limpieza, ambiente).
+2. Indica si continúan las visitas.
+3. Se agrega el registro al historial de la ficha médica del animal.
+
+**Reglas:** RN-13, RN-14
+
+### CU-08 — Enviar Recordatorio de Visita
+**Actor:** Sistema (automático)
+
+1. El sistema detecta visitas en los próximos N días.
+2. Envía recordatorio por canal preferido (SMS/WhatsApp/Email).
+
+**Reglas:** RN-12
+
+---
+
+## 4. Reglas de Negocio
+
+### RN-01 — Tipos de Animal
+Doméstico (perro, gato, etc.) o Salvaje (zorro, pingüino, etc.). Determina adoptabilidad.
+*Uso: CU-01, CU-05*
+
+### RN-02 — Ficha Técnica Obligatoria
+Todo animal requiere: altura, peso, edad, condición médica.
+*Uso: CU-01*
+
+### RN-03 — Escalabilidad en Exportación
+Debe soportar PDF y Excel sin modificar código existente (Strategy pattern).
+*Uso: CU-02*
+
+### RN-04 — Alarma con Acciones
+Periodicidad en días + set de acciones: Control parásitos, Antiparasitarios, Peso/Tamaño, Nutrición, Vacuna.
+*Uso: CU-03, CU-04*
+
+### RN-05 — Notificación a Veterinarios
+Alarma disparada → push notification a TODOS los veterinarios.
+*Uso: CU-04*
+
+### RN-06 — Registro de Atención
+Debe documentar acciones realizadas + comentario. Si es tratamiento, indicar si finalizó.
+*Uso: CU-04*
+
+### RN-07 — Tratamiento Bloquea Adopción
+Animal en tratamiento médico activo (alarma ACTIVA o ATENDIDA sin finalizar) NO puede adoptarse.
+*Uso: CU-04, CU-05*
+
+### RN-08 — Solo Domésticos Son Adoptables
+Salvajes NUNCA se adoptan.
+*Uso: CU-05*
+
+### RN-09 — Límite de Adopciones
+Máximo 2 animales por adoptante.
+*Uso: CU-05*
+
+### RN-10 — Datos del Adoptante
+Requiere: nombre, apellido, estado civil, email, teléfono, ocupación, mascotas existentes, motivo, tipos de interés.
+*Uso: CU-05*
+
+### RN-11 — Visitador Responsable
+Todo seguimiento post-adopción tiene un visitador asignado.
+*Uso: CU-06*
+
+### RN-12 — Recordatorio Configurable
+N días de anticipación (parámetro). Canales: SMS, WhatsApp, Email.
+*Uso: CU-06, CU-08*
+
+### RN-13 — Encuesta de Visita
+Tres ítems calificados MALO/REGULAR/BUENO: estado animal, limpieza del lugar, ambiente.
+*Uso: CU-07*
+
+### RN-14 — Historial Unificado
+Todos los eventos (atenciones veterinarias y visitas) quedan en la FichaMedica del animal.
+*Uso: CU-04, CU-07*
+
+---
+
+## 5. Flujos Principales
+
+\`\`\`mermaid
+sequenceDiagram
+    participant V as Veterinario
+    participant S as Sistema
+    participant N as Notificaciones
+    participant VT as Todos los Vets
+    V->>S: POST /api/animales/{id}/alarmas
+    S-->>V: AlarmaResponse (ACTIVA)
+    Note over S: Periodicidad cumplida...
+    S->>S: Disparar Alarma
+    S->>N: Push notification
+    N->>VT: Alerta disparada
+    V->>S: POST /api/alarmas/{id}/atender
+    S->>S: Crear RegistroAtencion en FichaMedica
+    S-->>V: AlarmaResponse (FINALIZADA)
+\`\`\`
+
+\`\`\`mermaid
+sequenceDiagram
+    participant E as Empleado
+    participant S as Sistema
+    participant Ad as Adoptante
+    E->>S: POST /api/adopciones
+    S->>S: Validar RN-07, RN-08, RN-09
+    S-->>E: AdopcionResponse
+    E->>S: POST /api/seguimientos
+    S-->>E: SeguimientoResponse
+    Note over S: N dias antes de la visita...
+    S->>Ad: Recordatorio por canal preferido
+\`\`\`
+
+---
+
+## 6. Estados de la Alarma
+
+| Estado | Descripción | Transición |
+|--------|-------------|------------|
+| \`ACTIVA\` | Vigente. Bloquea adopción si es tratamiento. | → ATENDIDA |
+| \`ATENDIDA\` | Atendida sin finalizar tratamiento. Sigue bloqueando. | → FINALIZADA |
+| \`FINALIZADA\` | Tratamiento completo. No bloquea adopción. | (terminal) |
+
+---
+
+## 7. Fuera de Alcance
+- Login y registro (módulo externo)
+- Permisos y roles (módulo externo)
+- Pasarela de pagos
+- Inventario de medicamentos
+- Aplicación mobile
+
+---
+
+## 8. Glosario del Dominio
+
+| Término | Definición |
+|---------|------------|
+| Animal Doméstico | Adoptable (perro, gato, canario, loro, tortuga, etc.) |
+| Animal Salvaje | No adoptable (zorro, pingüino, halcón, etc.) |
+| Ficha Médica | Historial médico completo del animal |
+| Alarma | Control periódico programado por veterinario |
+| Alerta | Notificación generada al dispararse una alarma |
+| RegistroAtencion | Evento en ficha que documenta la atención |
+| SeguimientoVisitas | Configuración del seguimiento post-adopción |
+| VisitaDomicilio | Visita concreta al hogar del adoptante |
+| EncuestaSeguimiento | Evaluación de la visita domiciliaria |
+| ExternalId | Referencia al sistema de autenticación externo |
+
+---
+
+## 9. Supuestos a Validar
+
+- [ ] ¿El disparo de alarmas es automático (scheduler) o manual?
+- [ ] ¿El externalId es UUID o Long?
+- [ ] ¿El parámetro N de recordatorios es global o por adopción?
+- [ ] ¿Puede haber múltiples alarmas activas para el mismo animal?
+- [ ] ¿Las visitas tienen fecha programada de antemano?
+`;
+
+const TECHNICAL = `
+# Technical Spec — Gud Boys (Refugio Animal)
+> Version: 1.0 | Fecha: 2026-06-19 | Estado: Draft
+
+## 1. Resumen Técnico
+
+API REST en **Java 17 + Spring Boot 3.3**. Arquitectura en capas (Controller → Service → Repository → Domain). Persistencia JPA/Hibernate sobre **MySQL 8**. La capa de infraestructura implementa exportación (PDF/Excel), notificaciones (Firebase, SMS, WhatsApp, Email) y el adaptador al módulo de autenticación externo.
+
+---
+
+## 2. Stack y Versiones
+
+| Tecnología | Versión | Rol |
+|------------|---------|-----|
+| Java | 17 (LTS) | Lenguaje base |
+| Spring Boot | 3.3.x | Framework web/DI |
+| Spring Data JPA | 3.3.x | ORM |
+| Hibernate | 6.x [INFERRED] | Implementación JPA |
+| MySQL | 8.x | Base de datos |
+| H2 | 2.x | Tests (in-memory) |
+| Lombok | 1.18.x | Reducción boilerplate |
+| Jakarta Validation | 3.x | Validación DTOs |
+| Maven | 3.9.x | Build tool |
+
+---
+
+## 3. Arquitectura
+
+\`\`\`
+com.gudboys/
+├── controller/      # HTTP endpoints
+├── dto/
+│   ├── request/     # Input DTOs
+│   └── response/    # Output DTOs
+├── mapper/          # DTO ↔ Entity
+├── service/         # Interfaces de servicio
+│   └── impl/        # Implementaciones (TODO)
+├── domain/          # Entidades JPA
+│   └── enums/       # Enumeraciones
+├── repository/      # Spring Data interfaces
+├── infrastructure/
+│   ├── export/      # IExportadorStrategy, PDF, Excel
+│   ├── notification/ # Push, SMS, WhatsApp, Email
+│   └── auth/        # AuthServiceAdapter
+└── config/          # DatabaseConfig
+\`\`\`
+
+---
+
+## 4. Modelo de Datos
+
+### Animal (JOINED inheritance)
+- \`id\`, \`altura\`, \`peso\`, \`edad\`, \`condicionMedica\`
+- → FichaMedica (1:1), Alarma (1:N)
+
+### AnimalDomestico extends Animal
+- \`especie\`
+- \`esAdoptable()\`: false si tiene alarma de tratamiento ACTIVA/ATENDIDA
+
+### AnimalSalvaje extends Animal
+- \`especie\`
+- \`esAdoptable()\`: siempre false
+
+### FichaMedica
+- \`id\`, → animal (1:1), → eventos (1:N ordenados por fecha)
+
+### Evento (JOINED inheritance)
+- \`id\`, \`descripcion\`, \`fechaHora\`, → fichaMedica
+
+### RegistroAtencion extends Evento
+- \`comentario\`, \`tratamientoFinalizado\`, → veterinario
+- \`accionesRealizadas\`: List<AccionAlarma> (ElementCollection)
+
+### Alarma
+- \`id\`, \`periodicidad\`, \`esTratamientoMedico\`, \`estado\` (EstadoAlarma)
+- → animal, \`acciones\`: List<AccionAlarma> (ElementCollection)
+
+### Usuario (JOINED inheritance)
+- \`id\`, \`externalId\`, \`nombre\`, \`email\`
+- → Veterinario, Visitador
+
+### Adoptante
+- \`id\`, \`nombre\`, \`apellido\`, \`estadoCivil\`, \`email\`, \`telefono\`
+- \`ocupacion\` (Ocupacion enum), \`tieneMascotas\`, \`motivoAdopcion\`
+- \`tiposAnimalesInteresados\`: List<String> (ElementCollection)
+- \`cantAnimalesAdoptados\` (max 2)
+
+### Adopcion
+- → adoptante, → animal (AnimalDomestico, 1:1), \`fechaAdopcion\`
+- → seguimientoVisitas (1:1)
+
+### SeguimientoVisitas
+- → adopcion, → visitador, \`diaVisita\`, \`horarioVisita\`
+- \`preferenciaRecordatorio\` (PreferenciaRecordatorio enum)
+- → visitas: List<VisitaDomicilio>
+
+### VisitaDomicilio
+- → seguimientoVisitas, \`fechaVisita\`, \`continuarVisitas\`
+- → encuesta: EncuestaSeguimiento (1:1)
+
+### EncuestaSeguimiento
+- \`estadoGeneral\`, \`limpiezaLugar\`, \`ambiente\` (Calificacion enum)
+
+---
+
+## 5. API Surface
+
+| Método | Path | Request DTO | Response DTO |
+|--------|------|-------------|--------------|
+| POST | /api/animales | IngresarAnimalRequestDTO | AnimalResponseDTO |
+| GET | /api/animales | — | List<AnimalResponseDTO> |
+| GET | /api/animales/{id} | — | AnimalResponseDTO |
+| GET | /api/animales/{id}/ficha-medica | — | FichaMedicaResponseDTO |
+| POST | /api/animales/{id}/alarmas | CrearAlarmaRequestDTO | AlarmaResponseDTO |
+| GET | /api/animales/{id}/alarmas | — | List<AlarmaResponseDTO> |
+| PUT | /api/alarmas/{id} | CrearAlarmaRequestDTO | AlarmaResponseDTO |
+| POST | /api/alarmas/{id}/atender | AtenderAlarmaRequestDTO | AlarmaResponseDTO |
+| POST | /api/adopciones | RegistrarAdopcionRequestDTO | AdopcionResponseDTO |
+| GET | /api/adopciones | — | List<AdopcionResponseDTO> |
+| GET | /api/adopciones/{id} | — | AdopcionResponseDTO |
+| POST | /api/seguimientos | ConfigurarSeguimientoRequestDTO | SeguimientoResponseDTO |
+| GET | /api/seguimientos/{id} | — | SeguimientoResponseDTO |
+| POST | /api/seguimientos/{id}/visitas | RegistrarVisitaRequestDTO | VisitaResponseDTO |
+| GET | /api/seguimientos/{id}/visitas | — | List<VisitaResponseDTO> |
+
+---
+
+## 6. Dependencias Externas
+
+| Servicio | Rol | Adaptador |
+|----------|-----|-----------|
+| Módulo Autenticación | Login/registro usuarios | AuthServiceAdapter |
+| Firebase FCM | Push notifications a vets | FirebasePushNotification |
+| SMS Gateway | Recordatorios SMS | SmsSender |
+| WhatsApp Business | Recordatorios WA | WhatsAppSender |
+| Email SMTP | Recordatorios email | EmailSender |
+
+---
+
+## 7. Configuración y Variables de Entorno
+
+\`\`\`properties
+spring.datasource.url=jdbc:mysql://localhost:3306/gudboys
+spring.datasource.username=\${DB_USERNAME}
+spring.datasource.password=\${DB_PASSWORD}
+spring.jpa.hibernate.ddl-auto=update
+gudboys.recordatorio.dias-anticipacion=3
+gudboys.auth.service-url=\${AUTH_SERVICE_URL}
+gudboys.firebase.server-key=\${FIREBASE_SERVER_KEY}
+\`\`\`
+
+---
+
+## 8. Decisiones Técnicas (TD-XX)
+
+### TD-01 — Herencia JPA con JOINED strategy
+- **Contexto:** Animal, Usuario y Evento tienen subtipos con campos distintos.
+- **Decisión:** \`@Inheritance(strategy = InheritanceType.JOINED)\` — tabla separada por subtipo.
+- **Trade-off:** Más JOINs vs. modelo limpio sin columnas nulas.
+- **Status:** Confirmado.
+
+### TD-02 — AccionAlarma como Enum + ElementCollection
+- **Contexto:** El diseño propone Composite para acciones.
+- **Decisión:** \`enum AccionAlarma\` con \`@ElementCollection\` en Alarma y RegistroAtencion.
+- **Trade-off:** Menos flexible, mucho más simple. Suficiente para los requisitos actuales.
+- **Status:** Confirmado.
+
+### TD-03 — externalId para usuarios externos
+- **Contexto:** Autenticación es responsabilidad de un módulo externo.
+- **Decisión:** Guardar \`externalId\` (String) en Usuario. \`AuthServiceAdapter\` para consultas al módulo externo.
+- **Trade-off:** Acoplamiento ligero — si el servicio externo cambia, solo se modifica el adaptador.
+- **Status:** Confirmado por enunciado.
+
+### TD-04 — Patrones de diseño pendientes [TODO]
+- **Contexto:** El TP exige Strategy (exportación, recordatorios) y Observer (push notifications).
+- **Decisión:** Interfaces creadas (\`IExportadorStrategy\`, \`IRecordatorioStrategy\`, \`INotificadorPush\`). Implementaciones pendientes.
+- **Trade-off:** Sin implementación, la exportación y notificaciones lanzarán UnsupportedOperationException.
+- **Status:** [TODO] Implementación pendiente.
+
+---
+
+## 9. Deployment y Runtime
+
+- JAR ejecutable vía \`mvn spring-boot:run\`
+- MySQL 8.x local o Docker
+- Perfil test: H2 in-memory con \`application-test.properties\`
+
+---
+
+## 10. Observabilidad
+
+- [TODO] Spring Actuator: \`/actuator/health\`
+- [TODO] Logging SLF4J + Logback (incluido por defecto)
+- RegistroAtencion persiste historial de atenciones de alarma en BD
+
+---
+
+## 11. Testing
+
+- [TODO] JUnit 5 + Mockito para services
+- [TODO] @SpringBootTest + H2 para integración
+- Casos críticos: ingreso animal, ciclo alarma, validación adopción (salvaje, tratamiento, límite 2)
+
+---
+
+## 12. Gaps Detectados [TODO]
+
+- [TODO] Lógica en todos los Services (IngresoAnimalService, GestionAlarmaService, AtencionAlarmaService, AdopcionService, VisitaSeguimientoService)
+- [TODO] ExportadorPDF y ExportadorExcel (agregar iText/Apache POI al pom.xml)
+- [TODO] FirebasePushNotification (agregar Firebase SDK)
+- [TODO] SmsSender, WhatsAppSender, EmailSender
+- [TODO] AuthServiceAdapter — comunicación con módulo externo
+- [TODO] Job/Scheduler para disparar alarmas automáticamente (@Scheduled)
+- [TODO] @ControllerAdvice para manejo global de excepciones
+- [TODO] Endpoint de exportación de ficha médica (GET /api/animales/{id}/ficha-medica/exportar)
+
+---
+
+## 13. Supuestos a Validar
+
+- [ ] ¿MySQL o PostgreSQL?
+- [ ] ¿externalId es UUID String o Long?
+- [ ] ¿El scheduler de alarmas es parte del TP?
+- [ ] ¿Se requiere Spring Security?
+- [ ] ¿Los tipos de animales del adoptante son enum o texto libre?
+`;
+
+let currentTab = 'functional';
+
+mermaid.initialize({ startOnLoad: false, theme: 'dark', themeVariables: { primaryColor: '#7c6af7', primaryTextColor: '#e2e8f0', primaryBorderColor: '#2d3148', lineColor: '#4ecdc4', secondaryColor: '#1e2130', tertiaryColor: '#12151f' } });
+
+function switchTab(tab) {
+  currentTab = tab;
+  document.querySelectorAll('.tab-btn').forEach((b, i) => {
+    b.classList.toggle('active', (i === 0 && tab === 'functional') || (i === 1 && tab === 'technical'));
+  });
+  renderContent(tab === 'functional' ? FUNCTIONAL : TECHNICAL);
+}
+
+function renderContent(markdown) {
+  const content = document.getElementById('content-area');
+  content.innerHTML = marked.parse(markdown);
+  // Render mermaid
+  content.querySelectorAll('pre code.language-mermaid, code.language-mermaid').forEach((block) => {
+    const container = document.createElement('div');
+    container.className = 'mermaid';
+    container.textContent = block.textContent;
+    block.closest('pre').replaceWith(container);
+  });
+  mermaid.run({ nodes: document.querySelectorAll('.mermaid') });
+  // Highlight tags
+  content.innerHTML = content.innerHTML
+    .replace(/\[INFERRED\]/g, '<span data-tag="INFERRED">[INFERRED]</span>')
+    .replace(/\[TODO\]/g, '<span data-tag="TODO">[TODO]</span>')
+    .replace(/\[CONFIRMED\]/g, '<span data-tag="CONFIRMED">[CONFIRMED]</span>')
+    .replace(/\[ASSUMPTION\]/g, '<span data-tag="ASSUMPTION">[ASSUMPTION]</span>')
+    .replace(/\[POR HACER\]/g, '<span data-tag="TODO">[POR HACER]</span>');
+  buildNav();
+}
+
+function buildNav() {
+  const nav = document.getElementById('nav-links');
+  const headings = document.querySelectorAll('#content-area h2, #content-area h3');
+  nav.innerHTML = '';
+  headings.forEach((h) => {
+    const id = h.textContent.trim().toLowerCase().replace(/[^a-z0-9À-ɏ]+/g, '-');
+    h.id = id;
+    const a = document.createElement('a');
+    a.href = '#' + id;
+    a.textContent = h.textContent.trim();
+    if (h.tagName === 'H3') a.classList.add('h3-link');
+    a.onclick = (e) => { e.preventDefault(); h.scrollIntoView({ behavior: 'smooth', block: 'start' }); };
+    nav.appendChild(a);
+  });
+}
+
+switchTab('functional');
+</script>
+</body>
+</html>
