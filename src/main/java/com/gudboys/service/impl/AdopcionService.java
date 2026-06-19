@@ -21,7 +21,7 @@ public class AdopcionService implements IAdopcionService {
 
     @Override
     public AdopcionResponseDTO registrarAdopcion(RegistrarAdopcionRequestDTO dto) {
-        // TODO: implementar logica de registro de adopcion
+        //
         // Debe validar: animal adoptable (RN-07, RN-08), limite 2 adopciones por adoptante (RN-09)
         throw new UnsupportedOperationException("Not implemented yet");
     }
