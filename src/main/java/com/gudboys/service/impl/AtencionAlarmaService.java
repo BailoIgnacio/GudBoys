@@ -1,5 +1,9 @@
 package com.gudboys.service.impl;
 
+import com.gudboys.domain.Alarma;
+import com.gudboys.domain.Evento;
+import com.gudboys.domain.RegistroAtencion;
+import com.gudboys.domain.Veterinario;
 import com.gudboys.dto.request.AtenderAlarmaRequestDTO;
 import com.gudboys.dto.response.AlarmaResponseDTO;
 import com.gudboys.mapper.AlarmaMapper;
@@ -9,6 +13,8 @@ import com.gudboys.repository.IVeterinarioRepository;
 import com.gudboys.service.IAtencionAlarmaService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import com.gudboys.domain.FichaMedica;
+import com.gudboys.domain.enums.EstadoAlarma;;
 
 @Service
 @RequiredArgsConstructor
@@ -21,8 +27,42 @@ public class AtencionAlarmaService implements IAtencionAlarmaService {
 
     @Override
     public AlarmaResponseDTO atenderAlarma(Long alarmaId, AtenderAlarmaRequestDTO dto) {
-        // TODO: implementar logica de atencion de alarma
-        // Debe: crear RegistroAtencion, actualizar estado alarma, notificar si corresponde
-        throw new UnsupportedOperationException("Not implemented yet");
+        //TODO: FALTA HACER BIEN LAS EXCEPCIONESSS
+        
+        //valido alarma
+        Alarma alarma = alarmaRepository.findById(alarmaId)
+            .orElseThrow(()-> new RuntimeException("No existe esta alarma"));
+
+        //Valido veterinario
+        Veterinario veterinario= veterinarioRepository.findById(dto.getVeterinarioId())
+            .orElseThrow(()-> new RuntimeException("Veterinario no encontrado"));
+
+        FichaMedica ficha= fichaMedicaRepository.findByAnimalId(alarma.getAnimal().getId())
+            .orElseThrow(()-> new RuntimeException("Este animal no tiene ficha"));
+            
+        //Creo y seteo el registro
+        RegistroAtencion registro = new RegistroAtencion();
+        registro.setVeterinario(veterinario);
+        registro.setAccionesRealizadas(dto.getAccionesRealizadas());
+        registro.setComentario(dto.getComentario());
+        registro.setTratamientoFinalizado(dto.getTratamientoFinalizado());
+        registro.setDescripcion("Atención de alarma: " + dto.getAccionesRealizadas());
+
+        //persiste por cascade
+        ficha.agregarEvento(registro);
+        
+        //Cambio estado de la alarma
+        if (alarma.isEsTratamientoMedico() && Boolean.TRUE.equals(dto.getTratamientoFinalizado())) {
+            alarma.setEstado(EstadoAlarma.FINALIZADA);
+        } else {
+            alarma.setEstado(EstadoAlarma.ATENDIDA);
+        }
+        
+        // Guardo las entidades que modifiqué
+        fichaMedicaRepository.save(ficha);
+        alarmaRepository.save(alarma);
+
+        //devuelvo el dto
+        return alarmaMapper.toResponseDTO(alarma);
     }
 }
