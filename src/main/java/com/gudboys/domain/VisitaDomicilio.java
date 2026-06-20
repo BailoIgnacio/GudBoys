@@ -9,14 +9,14 @@ import java.time.LocalDate;
 
 @Entity
 @Table(name = "visitas_domicilio")
+@PrimaryKeyJoinColumn(name = "id")
 @Getter
 @Setter
 @NoArgsConstructor
-public class VisitaDomicilio {
+public class VisitaDomicilio extends Evento {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    // id, descripcion, fechaHora y fichaMedica se heredan de Evento (RN-14: la visita
+    // queda en el historial de la ficha medica del animal).
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "seguimiento_id", nullable = false)

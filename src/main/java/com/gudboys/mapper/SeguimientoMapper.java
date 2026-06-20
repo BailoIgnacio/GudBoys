@@ -30,6 +30,11 @@ public class SeguimientoMapper {
         visita.setFechaVisita(dto.getFechaVisita());
         visita.setContinuarVisitas(dto.getContinuarVisitas());
 
+        // Campos heredados de Evento (RN-14): la visita queda enlazada a la ficha medica
+        // del animal adoptado, apareciendo en su historial unificado.
+        visita.setDescripcion("Visita domiciliaria");
+        visita.setFichaMedica(seguimiento.getAdopcion().getAnimal().getFichaMedica());
+
         EncuestaSeguimiento encuesta = new EncuestaSeguimiento();
         encuesta.setVisitaDomicilio(visita);
         encuesta.setEstadoGeneral(dto.getEstadoGeneral());

@@ -73,7 +73,7 @@
 <header>
   <div>
     <h1>Gud Boys — Refugio Animal</h1>
-    <div class="subtitle">Generado el 2026-06-19 &nbsp;|&nbsp; SDD v1.0</div>
+    <div class="subtitle">Generado el 2026-06-19 &nbsp;|&nbsp; Actualizado 2026-06-20 &nbsp;|&nbsp; SDD v1.1</div>
   </div>
   <div class="tabs">
     <button class="tab-btn active" onclick="switchTab('functional')">Spec Funcional</button>
@@ -331,7 +331,9 @@ sequenceDiagram
 
 const TECHNICAL = `
 # Technical Spec — Gud Boys (Refugio Animal)
-> Version: 1.0 | Fecha: 2026-06-19 | Estado: Draft
+> Version: 1.1 | Fecha: 2026-06-20 | Estado: Draft
+>
+> **Changelog v1.1:** \`VisitaDomicilio\` ahora extiende \`Evento\` (JOINED) para que las visitas queden en el historial de la ficha médica (RN-14). Ver TD-05.
 
 ## 1. Resumen Técnico
 
@@ -425,9 +427,10 @@ com.gudboys/
 - \`preferenciaRecordatorio\` (PreferenciaRecordatorio enum)
 - → visitas: List<VisitaDomicilio>
 
-### VisitaDomicilio
+### VisitaDomicilio — extiende Evento
 - → seguimientoVisitas, \`fechaVisita\`, \`continuarVisitas\`
 - → encuesta: EncuestaSeguimiento (1:1)
+- Hereda de \`Evento\`: \`descripcion\`, \`fechaHora\`, → fichaMedica. Queda en el historial unificado de la ficha (RN-14, TD-05).
 
 ### EncuestaSeguimiento
 - \`estadoGeneral\`, \`limpiezaLugar\`, \`ambiente\` (Calificacion enum)
@@ -507,6 +510,12 @@ gudboys.firebase.server-key=\${FIREBASE_SERVER_KEY}
 - **Decisión:** Interfaces creadas (\`IExportadorStrategy\`, \`IRecordatorioStrategy\`, \`INotificadorPush\`). Implementaciones pendientes.
 - **Trade-off:** Sin implementación, la exportación y notificaciones lanzarán UnsupportedOperationException.
 - **Status:** [TODO] Implementación pendiente.
+
+### TD-05 — VisitaDomicilio como Evento (RN-14)
+- **Contexto:** RN-14 exige un historial unificado en la ficha médica (atenciones + visitas). \`VisitaDomicilio\` era una entidad independiente sin relación con \`FichaMedica\`, así que no podía entrar en \`FichaMedica.eventos\` (\`List<Evento>\`). Contradecía RN-14 y la intención ya declarada en TD-01.
+- **Decisión:** \`VisitaDomicilio\` extiende \`Evento\` (JOINED, \`@PrimaryKeyJoinColumn\`, igual que \`RegistroAtencion\`). Pasa a tener dos relaciones: \`SeguimientoVisitas\` y \`FichaMedica\` (heredada). Su PK deja de ser IDENTITY propia y pasa a ser FK a \`eventos.id\`.
+- **Trade-off:** Cambio estructural de schema: con \`ddl-auto=update\` la PK no migra sola, hay que recrear \`visitas_domicilio\` y \`encuestas_seguimiento\` (sin impacto, no había datos). Opcional sumar una rama en \`AnimalMapper\` para exponer datos propios de la visita en el historial.
+- **Status:** Confirmado — refactor en curso por el equipo.
 
 ---
 

@@ -1,5 +1,7 @@
 # Technical Spec — Gud Boys (Refugio Animal)
-> Version: 1.0 | Fecha: 2026-06-19 | Estado: Draft
+> Version: 1.1 | Fecha: 2026-06-20 | Estado: Draft
+>
+> **Changelog v1.1:** `VisitaDomicilio` ahora extiende `Evento` (herencia JOINED) para que las visitas domiciliarias queden en el historial de la ficha médica (RN-14). Ver [TD-05](#td-05--visitadomicilio-como-evento-rn-14).
 
 ## 1. Resumen Técnico
 
@@ -172,13 +174,15 @@ com.gudboys/
 | horario_visita | VARCHAR | Ej: "14:00-16:00" |
 | preferencia_recordatorio | ENUM(SMS,WHATSAPP,EMAIL) | |
 
-### VisitaDomicilio (tabla: `visitas_domicilio`)
-| Campo | Tipo |
-|-------|------|
-| id | BIGINT PK |
-| seguimiento_id | BIGINT FK |
-| fecha_visita | DATE |
-| continuar_visitas | BOOLEAN |
+### VisitaDomicilio (tabla: `visitas_domicilio`) — extiende `Evento`
+| Campo | Tipo | Notas |
+|-------|------|-------|
+| id | BIGINT FK | → eventos.id (subtipo JOINED de `Evento`) |
+| seguimiento_id | BIGINT FK | → seguimientos_visitas.id |
+| fecha_visita | DATE | Fecha de la visita en sí (distinta de `eventos.fecha_hora`, que es cuándo se registró) |
+| continuar_visitas | BOOLEAN | |
+
+**Herencia:** Al ser subtipo de `Evento`, hereda `descripcion`, `fecha_hora` y `ficha_medica_id` (tabla `eventos`). Por eso una visita queda enlazada **a la vez** a su `SeguimientoVisitas` (vía `seguimiento_id`) y a la `FichaMedica` del animal (vía `ficha_medica_id` heredado), apareciendo en el historial unificado de la ficha (RN-14). Ver [TD-05](#td-05--visitadomicilio-como-evento-rn-14).
 
 ### EncuestaSeguimiento (tabla: `encuestas_seguimiento`)
 | Campo | Tipo |
@@ -276,6 +280,12 @@ gudboys.firebase.server-key=${FIREBASE_SERVER_KEY}
 - **Decisión:** Las interfaces están creadas (`IExportadorStrategy`, `IRecordatorioStrategy`). Las implementaciones quedan pendientes.
 - **Trade-off:** Sin los patrones, la exportación y notificaciones no funcionarán.
 - **Status:** [TODO] — Implementación pendiente por el equipo.
+
+### TD-05 — VisitaDomicilio como Evento (RN-14)
+- **Contexto:** RN-14 exige que el historial de la ficha médica unifique **registros de atención veterinaria y visitas domiciliarias**. En el modelo inicial, `VisitaDomicilio` era una entidad independiente colgada solo de `SeguimientoVisitas`, sin relación con `FichaMedica`. Era imposible que una visita apareciera en el historial: `FichaMedica.eventos` es `List<Evento>` y `VisitaDomicilio` no era un `Evento`. Esto contradecía tanto RN-14 como la intención ya expresada en [TD-01](#td-01--herencia-jpa-con-joined-strategy) ("VisitaDomicilio como evento").
+- **Decisión:** Hacer que `VisitaDomicilio` extienda `Evento` (herencia JOINED, con `@PrimaryKeyJoinColumn`, igual que `RegistroAtencion`). La visita pasa a tener dos relaciones simultáneas: `SeguimientoVisitas` (su cadencia/contexto de seguimiento) y `FichaMedica` (heredada de `Evento`, para el historial). Su PK deja de ser `IDENTITY` propia y pasa a ser FK a `eventos.id`.
+- **Trade-off:** Alinea el código con RN-14 y TD-01 a costa de un cambio estructural de schema. Con `ddl-auto=update` la PK de `visitas_domicilio` no se migra automáticamente: en entornos existentes hay que recrear las tablas `visitas_domicilio` y `encuestas_seguimiento`. Como el feature no tenía datos productivos, el impacto es nulo. El `AnimalMapper` puede sumar una rama para exponer datos propios de la visita (encuesta, `continuar_visitas`) en el historial; sin ella, la visita igualmente aparece con su `tipo` y `descripcion`.
+- **Status:** Confirmado — refactor en curso por el equipo.
 
 ---
 
