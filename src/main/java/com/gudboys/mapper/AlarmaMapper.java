@@ -20,6 +20,14 @@ public class AlarmaMapper {
         return alarma;
     }
 
+    public Alarma actualizarEntity(CrearAlarmaRequestDTO dto, Alarma alarma) {
+        alarma.setPeriodicidad(dto.getPeriodicidad());
+        alarma.setEsTratamientoMedico(dto.getEsTratamientoMedico());
+        alarma.setAcciones(dto.getAcciones());
+
+        return alarma;
+    }
+
     public AlarmaResponseDTO toResponseDTO(Alarma alarma) {
         return AlarmaResponseDTO.builder()
                 .id(alarma.getId())
