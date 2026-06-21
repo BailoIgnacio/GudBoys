@@ -1,5 +1,7 @@
 # Technical Spec — Gud Boys (Refugio Animal)
-> Version: 1.1 | Fecha: 2026-06-20 | Estado: Draft
+> Version: 1.2 | Fecha: 2026-06-20 | Estado: Draft
+>
+> **Changelog v1.2:** `GestionAlarmaService` completo (`crearAlarma`, `actualizarAlarma` con `@Transactional`, `listarAlarmasPorAnimal`). Nuevo método `AlarmaMapper.actualizarEntity(dto, alarma)` para actualizar in-place sin duplicar filas. Ver sección [12](#12-gaps-detectados-todo) actualizada con estado real de cada service.
 >
 > **Changelog v1.1:** `VisitaDomicilio` ahora extiende `Evento` (herencia JOINED) para que las visitas domiciliarias queden en el historial de la ficha médica (RN-14). Ver [TD-05](#td-05--visitadomicilio-como-evento-rn-14).
 
@@ -277,9 +279,15 @@ gudboys.firebase.server-key=${FIREBASE_SERVER_KEY}
 
 ### TD-04 — Patrones de Diseño a implementar [TODO por el equipo]
 - **Contexto:** El TP exige patrones de diseño. El enunciado implica Strategy (exportación), Observer (notificaciones), Strategy (recordatorios). El TPO define también State para Alarma.
-- **Decisión:** Las interfaces están creadas (`IExportadorStrategy`, `IRecordatorioStrategy`). Las implementaciones quedan pendientes.
-- **Trade-off:** Sin los patrones, la exportación y notificaciones no funcionarán.
+- **Decisión:** Las interfaces están creadas (`IExportadorStrategy`, `IRecordatorioStrategy`, `INotificadorPush`). Las implementaciones quedan pendientes. `GestionAlarmaService` ya está completo pero usa el enum `EstadoAlarma` plano, sin el patrón State — la lógica de transición de estados todavía no está encapsulada.
+- **Trade-off:** Sin los patrones, la exportación y notificaciones no funcionarán. El State pattern para `Alarma` sigue pendiente y RN-07 (bloqueo de adopción según estado de tratamiento) se va a resolver con `if/switch` hasta que se implemente.
 - **Status:** [TODO] — Implementación pendiente por el equipo.
+
+### TD-06 — `AlarmaMapper.actualizarEntity` para actualización in-place
+- **Contexto:** `actualizarAlarma` necesitaba aplicar los cambios de un `CrearAlarmaRequestDTO` sobre una `Alarma` ya persistida, sin crear una entidad nueva (lo que generaría un `INSERT` duplicado en vez de un `UPDATE`).
+- **Decisión:** Se agregó `AlarmaMapper.actualizarEntity(CrearAlarmaRequestDTO dto, Alarma alarma)`, que muta in-place `periodicidad`, `esTratamientoMedico` y `acciones` sobre la instancia recibida (managed por JPA) y la retorna. No toca `id`, `animal` ni `estado` — esos campos no se actualizan por este flujo.
+- **Trade-off:** Mantiene `save()` haciendo `UPDATE` sobre la misma fila/PK en vez de duplicar registros. Como contrapartida, si en el futuro se necesita reasignar el animal o forzar un cambio de estado vía esta misma operación, hay que extender el método o agregar uno nuevo — hoy `actualizarEntity` ignora esos campos deliberadamente.
+- **Status:** Confirmado — implementado y en uso por `GestionAlarmaService.actualizarAlarma`.
 
 ### TD-05 — VisitaDomicilio como Evento (RN-14)
 - **Contexto:** RN-14 exige que el historial de la ficha médica unifique **registros de atención veterinaria y visitas domiciliarias**. En el modelo inicial, `VisitaDomicilio` era una entidad independiente colgada solo de `SeguimientoVisitas`, sin relación con `FichaMedica`. Era imposible que una visita apareciera en el historial: `FichaMedica.eventos` es `List<Evento>` y `VisitaDomicilio` no era un `Evento`. Esto contradecía tanto RN-14 como la intención ya expresada en [TD-01](#td-01--herencia-jpa-con-joined-strategy) ("VisitaDomicilio como evento").
@@ -316,7 +324,17 @@ gudboys.firebase.server-key=${FIREBASE_SERVER_KEY}
 
 ## 12. Gaps Detectados [TODO]
 
-- [TODO] Implementar lógica en todos los Services (IngresoAnimalService, GestionAlarmaService, AtencionAlarmaService, AdopcionService, VisitaSeguimientoService)
+**Estado de los Services (verificado en código, 2026-06-20):**
+
+| Service | Estado |
+|---------|--------|
+| `IngresoAnimalService` | Completo |
+| `GestionAlarmaService` | **Completo** — `crearAlarma`, `actualizarAlarma` (`@Transactional`), `listarAlarmasPorAnimal` |
+| `AtencionAlarmaService` | Completo (sin excepciones específicas — usa `RuntimeException` genérica) |
+| `AdopcionService` | Completo |
+| `VisitaSeguimientoService` | Casi completo — `configurarSeguimiento`, `obtenerSeguimiento`, `registrarVisita` y `listarVisitas` listos. Solo falta `enviarRecordatoriosProximos` (CU-08), que depende de que se implemente `IRecordatorioStrategy` |
+
+- [TODO] Implementar el método de recordatorios en `VisitaSeguimientoService` (depende de `IRecordatorioStrategy`)
 - [TODO] Implementar IExportadorStrategy en ExportadorPDF y ExportadorExcel
 - [TODO] Implementar IRecordatorioStrategy en SmsSender, WhatsAppSender, EmailSender
 - [TODO] Implementar FirebasePushNotification (Observer del veterinario)
