@@ -331,7 +331,9 @@ sequenceDiagram
 
 const TECHNICAL = `
 # Technical Spec — Gud Boys (Refugio Animal)
-> Version: 1.1 | Fecha: 2026-06-20 | Estado: Draft
+> Version: 1.2 | Fecha: 2026-06-20 | Estado: Draft
+>
+> **Changelog v1.2:** \`GestionAlarmaService\` completo (crearAlarma, actualizarAlarma con @Transactional, listarAlarmasPorAnimal). Nuevo \`AlarmaMapper.actualizarEntity\` para actualización in-place. Ver TD-06 y sección 12 actualizada.
 >
 > **Changelog v1.1:** \`VisitaDomicilio\` ahora extiende \`Evento\` (JOINED) para que las visitas queden en el historial de la ficha médica (RN-14). Ver TD-05.
 
@@ -506,10 +508,16 @@ gudboys.firebase.server-key=\${FIREBASE_SERVER_KEY}
 - **Status:** Confirmado por enunciado.
 
 ### TD-04 — Patrones de diseño pendientes [TODO]
-- **Contexto:** El TP exige Strategy (exportación, recordatorios) y Observer (push notifications).
-- **Decisión:** Interfaces creadas (\`IExportadorStrategy\`, \`IRecordatorioStrategy\`, \`INotificadorPush\`). Implementaciones pendientes.
-- **Trade-off:** Sin implementación, la exportación y notificaciones lanzarán UnsupportedOperationException.
+- **Contexto:** El TP exige Strategy (exportación, recordatorios), Observer (push notifications) y State (Alarma).
+- **Decisión:** Interfaces creadas (\`IExportadorStrategy\`, \`IRecordatorioStrategy\`, \`INotificadorPush\`). Implementaciones pendientes. \`GestionAlarmaService\` ya completo pero sigue usando el enum \`EstadoAlarma\` plano, sin State pattern.
+- **Trade-off:** Sin implementación, la exportación y notificaciones lanzarán UnsupportedOperationException. Sin State, las transiciones de \`Alarma\` (RN-07) se resuelven con if/switch.
 - **Status:** [TODO] Implementación pendiente.
+
+### TD-06 — AlarmaMapper.actualizarEntity para actualización in-place
+- **Contexto:** \`actualizarAlarma\` necesitaba aplicar un \`CrearAlarmaRequestDTO\` sobre una \`Alarma\` ya persistida sin duplicar la fila (INSERT en vez de UPDATE).
+- **Decisión:** \`AlarmaMapper.actualizarEntity(dto, alarma)\` muta in-place \`periodicidad\`, \`esTratamientoMedico\` y \`acciones\` sobre la instancia managed y la retorna. No toca \`id\`, \`animal\` ni \`estado\`.
+- **Trade-off:** \`save()\` hace UPDATE sobre la misma PK, sin duplicados. Si se necesita reasignar animal o forzar cambio de estado por este flujo, hay que extender el método.
+- **Status:** Confirmado — implementado y en uso.
 
 ### TD-05 — VisitaDomicilio como Evento (RN-14)
 - **Contexto:** RN-14 exige un historial unificado en la ficha médica (atenciones + visitas). \`VisitaDomicilio\` era una entidad independiente sin relación con \`FichaMedica\`, así que no podía entrar en \`FichaMedica.eventos\` (\`List<Evento>\`). Contradecía RN-14 y la intención ya declarada en TD-01.
@@ -545,7 +553,17 @@ gudboys.firebase.server-key=\${FIREBASE_SERVER_KEY}
 
 ## 12. Gaps Detectados [TODO]
 
-- [TODO] Lógica en todos los Services (IngresoAnimalService, GestionAlarmaService, AtencionAlarmaService, AdopcionService, VisitaSeguimientoService)
+**Estado de los Services (verificado en código, 2026-06-20):**
+
+| Service | Estado |
+|---------|--------|
+| IngresoAnimalService | Completo |
+| GestionAlarmaService | **Completo** — crearAlarma, actualizarAlarma (@Transactional), listarAlarmasPorAnimal |
+| AtencionAlarmaService | Completo (sin excepciones específicas) |
+| AdopcionService | Completo |
+| VisitaSeguimientoService | Casi completo — configurarSeguimiento, obtenerSeguimiento, registrarVisita y listarVisitas listos. Solo falta enviarRecordatoriosProximos (CU-08), depende de IRecordatorioStrategy |
+
+- [TODO] Implementar el método de recordatorios en VisitaSeguimientoService (depende de IRecordatorioStrategy)
 - [TODO] ExportadorPDF y ExportadorExcel (agregar iText/Apache POI al pom.xml)
 - [TODO] FirebasePushNotification (agregar Firebase SDK)
 - [TODO] SmsSender, WhatsAppSender, EmailSender
