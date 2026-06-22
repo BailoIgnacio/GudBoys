@@ -1,5 +1,9 @@
 # Functional Spec — Gud Boys (Refugio Animal)
-> Version: 1.0 | Fecha: 2026-06-19 | Estado: Draft
+> Version: 1.2 | Fecha: 2026-06-22 | Estado: Draft
+>
+> **Changelog v1.2:** Incorporado el diagrama UML actualizado (`PDS-TP.mdj`). CU-02 (Exportar ficha) ahora contempla **encriptado** y **marca de agua** (patrón Decorator); nueva regla **RN-15**. El detalle técnico de los patrones de diseño está en la sección 15 de la spec técnica.
+>
+> **Changelog v1.1:** Se marca el estado de implementación de cada caso de uso y regla de negocio (verificado contra el código al 2026-06-22). Nueva sección [10](#10-estado-de-implementación) con el resumen y la justificación de lo cumplido. Leyenda usada en este documento: ✅ Implementado · ⚠️ Parcial · ❌ Pendiente.
 
 ## 1. Propósito y Resumen
 
@@ -27,7 +31,8 @@ El sistema interactúa con un módulo externo de autenticación (no gestionado p
 
 ## 3. Casos de Uso
 
-### CU-01 — Ingresar Animal al Refugio
+### CU-01 — Ingresar Animal al Refugio ✅
+**Estado:** Implementado — `IngresoAnimalService.ingresarAnimal`. Valida el tipo (`DOMESTICO`/`SALVAJE`, si no lanza `AnimalException`), mapea con `AnimalMapper` al subtipo correcto, crea automáticamente una `FichaMedica` vacía asociada y persiste todo por cascade. Endpoint `POST /api/animales` activo en `AnimalController`.
 **Actor:** Veterinario  
 **Descripción:** Se registra un animal nuevo con su ficha técnica y médica inicial.
 
@@ -41,21 +46,23 @@ El sistema interactúa con un módulo externo de autenticación (no gestionado p
 
 ---
 
-### CU-02 — Exportar Ficha Médica
+### CU-02 — Exportar Ficha Médica ❌
+**Estado:** Pendiente — la interfaz `IExportadorStrategy` y las clases `ExportadorPDF`/`ExportadorExcel` existen, pero sus métodos `exportar()` lanzan `UnsupportedOperationException`. No hay endpoint de exportación en `AnimalController` ni dependencias de PDF/Excel (iText/POI) en el `pom.xml`. Depende de los patrones **Strategy + Decorator + Factory** de exportación.
 **Actor:** Veterinario  
-**Descripción:** Se exporta la ficha médica de un animal en PDF o Excel.
+**Descripción:** Se exporta la ficha médica de un animal en PDF o Excel, con opciones de encriptado y marca de agua.
 
 **Flujo:**
-1. El veterinario selecciona un animal y el formato de exportación (PDF o Excel).
-2. El sistema delega la exportación al exportador correspondiente (`ExportadorPDF` o `ExportadorExcel`).
+1. El veterinario selecciona un animal, el formato de exportación (PDF o Excel) y, opcionalmente, si quiere **encriptar** el archivo y/o agregarle **marca de agua** (RN-15).
+2. El sistema (vía `ExportadorFactory`) arma el exportador del formato elegido (Strategy) y lo envuelve con los decoradores pedidos (`EncriptarDecorator`, `MarcaAguaDecorator`).
 3. El sistema retorna el archivo exportado.
 
-**Reglas de negocio:** RN-03  
-**Nota:** El diseño debe permitir agregar nuevos formatos sin modificar la lógica existente [INFERRED → Strategy pattern].
+**Reglas de negocio:** RN-03, RN-15  
+**Nota:** El diseño permite agregar nuevos formatos sin modificar la lógica existente (Strategy) y combinar transformaciones de salida sin multiplicar clases (Decorator), seleccionando todo desde un punto único (Factory). Ver §15.3 de la spec técnica.
 
 ---
 
-### CU-03 — Crear/Actualizar Alarma de Control
+### CU-03 — Crear/Actualizar Alarma de Control ✅
+**Estado:** Implementado — `GestionAlarmaService` (`crearAlarma`, `actualizarAlarma` con `@Transactional` y actualización in-place vía `AlarmaMapper.actualizarEntity`, `listarAlarmasPorAnimal`). La alarma se crea con estado `ACTIVA` (seteado en `AlarmaMapper`). Endpoints `POST`/`GET /api/animales/{animalId}/alarmas` y `PUT /api/alarmas/{id}` activos.
 **Actor:** Veterinario  
 **Descripción:** Se programa una alarma periódica de control para un animal.
 
@@ -69,7 +76,10 @@ El sistema interactúa con un módulo externo de autenticación (no gestionado p
 
 ---
 
-### CU-04 — Disparar y Atender Alarma
+### CU-04 — Disparar y Atender Alarma ⚠️
+**Estado:** Parcial.
+- **Atención (pasos 3-8): ✅ Implementado** en `AtencionAlarmaService.atenderAlarma`: valida alarma/veterinario/ficha, crea el `RegistroAtencion` con acciones realizadas y comentario, lo agrega a la ficha médica (cascade) y transiciona el estado de la alarma a `FINALIZADA` (si es tratamiento y finalizó) o `ATENDIDA`. Endpoint `POST /api/alarmas/{id}/atender` activo. *Pendiente menor:* usa `RuntimeException` genérica en lugar de excepciones específicas.
+- **Disparo (pasos 1-2): ❌ Pendiente** — no existe el job/scheduler (`@Scheduled`) que detecte alarmas vencidas, ni se genera la `Alerta`, ni se envía la push notification. El `FirebasePushNotification` (Observer) es un stub que lanza `UnsupportedOperationException` y no se invoca desde ningún service. Depende del patrón **Observer** + scheduler.
 **Actor:** Sistema (disparo automático), Veterinario (atención)  
 **Descripción:** Al llegar el momento de una alarma, el sistema genera una alerta para todos los veterinarios.
 
@@ -87,7 +97,8 @@ El sistema interactúa con un módulo externo de autenticación (no gestionado p
 
 ---
 
-### CU-05 — Registrar Adopción
+### CU-05 — Registrar Adopción ✅
+**Estado:** Implementado — `AdopcionService.registrarAdopcion`. Valida que el animal sea adoptable (`animal.esAdoptable()` → RN-08) y que no esté bajo tratamiento activo (`ficha.estaBajoTratamientoActivo()` → RN-07), valida el límite de 2 adopciones por adoptante (RN-09), incrementa el contador del adoptante y persiste la `Adopcion`. Endpoints `POST`/`GET /api/adopciones` y `GET /api/adopciones/{id}` activos.
 **Actor:** Veterinario / Empleado del refugio  
 **Descripción:** Se registra la adopción de un animal doméstico.
 
@@ -102,7 +113,8 @@ El sistema interactúa con un módulo externo de autenticación (no gestionado p
 
 ---
 
-### CU-06 — Configurar Seguimiento de Visitas
+### CU-06 — Configurar Seguimiento de Visitas ✅
+**Estado:** Implementado — `VisitaSeguimientoService.configurarSeguimiento` (`@Transactional`). Valida visitador y adopción, impide más de un seguimiento por adopción (`findByAdopcionId`), mapea y persiste el `SeguimientoVisitas` con visitador, cadencia (día/horario) y preferencia de recordatorio. Endpoint `POST /api/seguimientos` activo. *Nota:* la preferencia de recordatorio se persiste, pero el envío en sí es CU-08 (pendiente).
 **Actor:** Veterinario / Empleado  
 **Descripción:** Post-adopción, se configura el seguimiento de visitas domiciliarias.
 
@@ -116,7 +128,8 @@ El sistema interactúa con un módulo externo de autenticación (no gestionado p
 
 ---
 
-### CU-07 — Registrar Visita Domiciliaria
+### CU-07 — Registrar Visita Domiciliaria ✅
+**Estado:** Implementado — `VisitaSeguimientoService.registrarVisita` y `listarVisitas` (`@Transactional`). Mapea la `VisitaDomicilio` con su `EncuestaSeguimiento` (estado animal, limpieza, ambiente) y el flag `continuar_visitas`, la agrega a la lista de visitas del seguimiento y persiste por cascade. Como `VisitaDomicilio` extiende `Evento`, queda enlazada también a la ficha médica (RN-14). Endpoints `POST`/`GET /api/seguimientos/{id}/visitas` activos.
 **Actor:** Visitador  
 **Descripción:** El visitador realiza la visita y registra los resultados.
 
@@ -129,7 +142,8 @@ El sistema interactúa con un módulo externo de autenticación (no gestionado p
 
 ---
 
-### CU-08 — Enviar Recordatorio de Visita
+### CU-08 — Enviar Recordatorio de Visita ❌
+**Estado:** Pendiente — `VisitaSeguimientoService.enviarRecordatoriosProximos` lanza `UnsupportedOperationException`. La interfaz `IRecordatorioStrategy` y los senders `SmsSender`/`WhatsAppSender`/`EmailSender` existen pero son stubs. No hay scheduler que dispare el envío. El parámetro `N` ya está configurado (`gudboys.recordatorio.dias-anticipacion=3`). Depende del patrón **Strategy** de recordatorios + scheduler.
 **Actor:** Sistema (automático)  
 **Descripción:** El sistema envía recordatorios 'N' días antes de cada visita.
 
@@ -144,61 +158,80 @@ El sistema interactúa con un módulo externo de autenticación (no gestionado p
 
 ## 4. Reglas de Negocio
 
-### RN-01 — Tipos de Animal
+### RN-01 — Tipos de Animal ✅
 Los animales se clasifican en **Doméstico** (perro, gato, canario, loro, tortuga, etc.) o **Salvaje** (zorro, pingüino, halcón, etc.). Esta clasificación determina si pueden ser adoptados.  
+*Cumplida:* modelada con herencia JPA `AnimalDomestico`/`AnimalSalvaje` sobre la clase abstracta `Animal`; `IngresoAnimalService` instancia el subtipo según el `tipoAnimal` del request.  
 *Referenciado por: CU-01, CU-05*
 
-### RN-02 — Ficha Técnica Obligatoria
+### RN-02 — Ficha Técnica Obligatoria ✅
 Todo animal que ingresa al refugio debe tener altura, peso, edad aproximada y condición médica inicial.  
+*Cumplida:* el `IngresarAnimalRequestDTO` exige estos campos vía Jakarta Validation (`@Valid` en `AnimalController`) y las columnas son `nullable=false` en la entidad `Animal`.  
 *Referenciado por: CU-01*
 
-### RN-03 — Escalabilidad en Exportación
+### RN-03 — Escalabilidad en Exportación ❌
 El sistema debe soportar la exportación de fichas médicas a PDF y Excel, con capacidad de agregar nuevos formatos sin modificar código existente.  
+*Pendiente:* el contrato `IExportadorStrategy` está definido (preparado para Strategy), pero las implementaciones `ExportadorPDF`/`ExportadorExcel` son stubs. No se cumple funcionalmente hasta implementar el patrón.  
 *Referenciado por: CU-02*
 
-### RN-04 — Alarma con Acciones
+### RN-04 — Alarma con Acciones ✅
 Cada alarma tiene una periodicidad (en días) y un conjunto de acciones a ejecutar. Las acciones posibles son: Control de parásitos, Colocar antiparasitarios, Comprobar peso y tamaño, Chequear nutrición, Colocar vacuna.  
+*Cumplida:* `Alarma` tiene `periodicidad` (int días) y `List<AccionAlarma>` (`@ElementCollection`); el enum `AccionAlarma` define las 5 acciones. `GestionAlarmaService` las persiste vía `AlarmaMapper`.  
 *Referenciado por: CU-03, CU-04*
 
-### RN-05 — Notificación a Veterinarios
+### RN-05 — Notificación a Veterinarios ❌
 Cuando se dispara una alarma, se envía una push notification a **todos** los veterinarios del sistema.  
+*Pendiente:* el contrato `INotificadorPush` está definido y `FirebasePushNotification` lo implementa como stub, pero no se invoca desde ningún flujo (no existe el disparo de alarmas). Depende del patrón **Observer**.  
 *Referenciado por: CU-04*
 
-### RN-06 — Registro de Atención
+### RN-06 — Registro de Atención ✅
 Cuando un veterinario atiende una alarma, debe dejar un comentario/registro de lo realizado. Si es tratamiento médico, debe indicar si finalizó.  
+*Cumplida:* `AtencionAlarmaService` crea un `RegistroAtencion` con `comentario`, `accionesRealizadas`, `tratamientoFinalizado` y el veterinario, y lo guarda en la ficha médica.  
 *Referenciado por: CU-04*
 
-### RN-07 — Estado del Tratamiento y Adopción
+### RN-07 — Estado del Tratamiento y Adopción ✅
 Un animal bajo tratamiento médico activo (alarma de tipo tratamiento en estado ACTIVA o ATENDIDA sin finalizar) **no puede ser adoptado**. Solo puede adoptarse cuando el tratamiento finaliza.  
+*Cumplida:* `FichaMedica.estaBajoTratamientoActivo()` y `AnimalDomestico.esAdoptable()` revisan si hay alguna alarma de tratamiento en estado `ACTIVA`/`ATENDIDA`; `AdopcionService` bloquea la adopción si es el caso. *Nota de diseño:* hoy se resuelve con el enum `EstadoAlarma` plano (sin el patrón **State**, todavía pendiente).  
 *Referenciado por: CU-04, CU-05*
 
-### RN-08 — Solo Domésticos son Adoptables
+### RN-08 — Solo Domésticos son Adoptables ✅
 Los animales salvajes **nunca** pueden ser adoptados, independientemente de su estado médico.  
+*Cumplida:* `esAdoptable()` es un método abstracto de `Animal`; `AnimalSalvaje` lo sobreescribe devolviendo `false` siempre (polimorfismo), y `AdopcionService` lo valida antes de adoptar.  
 *Referenciado por: CU-05*
 
-### RN-09 — Límite de Adopciones por Adoptante
+### RN-09 — Límite de Adopciones por Adoptante ✅
 Cada adoptante puede adoptar un **máximo de 2 animales** domésticos.  
+*Cumplida:* `AdopcionService` rechaza la adopción si `adoptante.getCantAnimalesAdoptados() >= 2` e incrementa el contador al concretar cada adopción.  
 *Referenciado por: CU-05*
 
-### RN-10 — Datos del Adoptante
+### RN-10 — Datos del Adoptante ✅
 Al registrar una adopción se requiere: nombre, apellido, estado civil, email, teléfono, ocupación (empleado/estudiante/otros), si tiene otras mascotas, motivo de adopción y tipos de animales de interés.  
+*Cumplida:* el `RegistrarAdopcionRequestDTO` recibe todos estos datos y `AdopcionMapper.toAdoptanteEntity` los mapea a la entidad `Adoptante` (ocupación como enum `Ocupacion`).  
 *Referenciado por: CU-05*
 
-### RN-11 — Asignación de Visitador
+### RN-11 — Asignación de Visitador ✅
 Todo seguimiento post-adopción debe tener un visitador responsable asignado.  
+*Cumplida:* `configurarSeguimiento` valida que el `visitadorId` exista antes de crear el seguimiento, y el `SeguimientoVisitas` referencia obligatoriamente al `Visitador`.  
 *Referenciado por: CU-06*
 
-### RN-12 — Recordatorio Configurable
+### RN-12 — Recordatorio Configurable ⚠️
 El sistema envía recordatorios 'N' días antes de cada visita (N es configurable por parámetro en application.properties). Los canales disponibles son SMS, WhatsApp y Email.  
+*Parcial:* la **configuración** está lista — el parámetro `N` existe (`gudboys.recordatorio.dias-anticipacion=3`), la preferencia de canal se persiste (enum `PreferenciaRecordatorio` en `SeguimientoVisitas`) y los 3 senders existen como Strategy. El **envío** en sí (CU-08) está pendiente.  
 *Referenciado por: CU-06, CU-08*
 
-### RN-13 — Encuesta de Visita
+### RN-13 — Encuesta de Visita ✅
 Cada visita domiciliaria incluye una encuesta con tres ítems calificados como MALO/REGULAR/BUENO: estado general del animal, limpieza del lugar, ambiente.  
+*Cumplida:* `EncuestaSeguimiento` tiene `estadoGeneral`, `limpiezaLugar` y `ambiente` como enum `Calificacion` (BUENO/REGULAR/MALO); `registrarVisita` la crea junto a la `VisitaDomicilio`.  
 *Referenciado por: CU-07*
 
-### RN-14 — Historial Unificado
+### RN-14 — Historial Unificado ✅
 Todos los eventos del animal (registros de atención veterinaria y visitas domiciliarias) quedan en el historial de la ficha médica del animal, enlazados cronológicamente.  
+*Cumplida:* tanto `RegistroAtencion` como `VisitaDomicilio` extienden `Evento` (herencia JOINED) y `FichaMedica.eventos` es `List<Evento>` ordenada por `fechaHora ASC`. Ver [TD-05] en la spec técnica.  
 *Referenciado por: CU-04, CU-07*
+
+### RN-15 — Opciones de Exportación: Encriptado y Marca de Agua ❌ (nueva, v1.1)
+La exportación de la ficha médica puede, opcionalmente, **encriptar** el archivo resultante y/o agregarle una **marca de agua**. Estas opciones son combinables (ninguna, una, o ambas) e independientes del formato (PDF/Excel).  
+*Pendiente:* introducida por el diagrama UML actualizado (`PDS-TP.mdj`) mediante el patrón **Decorator** (`EncriptarDecorator`, `MarcaAguaDecorator`) sobre el `IExportadorStrategy`, orquestado por `ExportadorFactory`. No implementada en código. Ver §15.3 de la spec técnica.  
+*Referenciado por: CU-02*
 
 ---
 
@@ -285,3 +318,36 @@ sequenceDiagram
 - [ ] ¿El parámetro 'N' de recordatorios es global o configurable por adopción?
 - [ ] ¿Puede un veterinario crear múltiples alarmas para el mismo animal simultáneamente?
 - [ ] ¿Las visitas domiciliarias tienen una fecha programada de antemano o son flexibles?
+
+---
+
+## 10. Estado de Implementación
+> Verificado contra el código al 2026-06-22. Leyenda: ✅ Implementado · ⚠️ Parcial · ❌ Pendiente.
+
+### Casos de Uso
+
+| CU | Caso de uso | Estado | Falta |
+|----|-------------|--------|-------|
+| CU-01 | Ingresar animal | ✅ | — |
+| CU-02 | Exportar ficha médica | ❌ | Strategy de exportación + endpoint + deps PDF/Excel |
+| CU-03 | Crear/actualizar alarma | ✅ | — |
+| CU-04 | Disparar y atender alarma | ⚠️ | Disparo automático: Observer + scheduler + generación de `Alerta` |
+| CU-05 | Registrar adopción | ✅ | — |
+| CU-06 | Configurar seguimiento | ✅ | — |
+| CU-07 | Registrar visita | ✅ | — |
+| CU-08 | Enviar recordatorio | ❌ | Strategy de recordatorio + scheduler |
+
+### Reglas de Negocio
+
+| RN | Estado | RN | Estado |
+|----|--------|----|--------|
+| RN-01 Tipos de animal | ✅ | RN-08 Solo domésticos adoptables | ✅ |
+| RN-02 Ficha técnica obligatoria | ✅ | RN-09 Límite 2 adopciones | ✅ |
+| RN-03 Escalabilidad exportación | ❌ | RN-10 Datos del adoptante | ✅ |
+| RN-04 Alarma con acciones | ✅ | RN-11 Asignación de visitador | ✅ |
+| RN-05 Notificación a veterinarios | ❌ | RN-12 Recordatorio configurable | ⚠️ |
+| RN-06 Registro de atención | ✅ | RN-13 Encuesta de visita | ✅ |
+| RN-07 Tratamiento bloquea adopción | ✅ | RN-14 Historial unificado | ✅ |
+| | | RN-15 Encriptado / marca de agua | ❌ |
+
+**Resumen:** 6 de 8 casos de uso completos (CU-04 parcial). 11 de 15 reglas cumplidas (RN-12 parcial; RN-03, RN-05, RN-15 pendientes). Lo pendiente (CU-02, CU-08, RN-03, RN-05, RN-15 y el disparo de CU-04) se concentra en los **patrones de diseño** y el **scheduler** automático. El diagrama actualizado (`PDS-TP.mdj`) define el diseño objetivo de esos patrones — **State** (alarma), **Composite** (acciones), **Strategy+Decorator+Factory** (exportación), **Factory** (recordatorios) y **Observer** (notificaciones) — detallado en la sección 15 de la spec técnica. Ver también §12 y §14 (plan de cierre).

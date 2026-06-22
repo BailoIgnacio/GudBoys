@@ -93,7 +93,11 @@
 <script>
 const FUNCTIONAL = `
 # Functional Spec — Gud Boys (Refugio Animal)
-> Version: 1.0 | Fecha: 2026-06-19 | Estado: Draft
+> Version: 1.2 | Fecha: 2026-06-22 | Estado: Draft
+>
+> **Changelog v1.2:** Incorporado el diagrama UML actualizado (\`PDS-TP.mdj\`). CU-02 (Exportar ficha) ahora contempla **encriptado** y **marca de agua** (patrón Decorator); nueva regla **RN-15**. El detalle técnico de los patrones de diseño está en la sección 15 de la spec técnica.
+>
+> **Changelog v1.1:** Se marca el estado de implementación de cada caso de uso y regla de negocio (verificado contra el código al 2026-06-22). Nueva sección [10](#10-estado-de-implementación) con el resumen y la justificación de lo cumplido. Leyenda usada en este documento: ✅ Implementado · ⚠️ Parcial · ❌ Pendiente.
 
 ## 1. Propósito y Resumen
 
@@ -103,7 +107,7 @@ const FUNCTIONAL = `
 - Manejar el proceso de adopción de animales domésticos
 - Coordinar visitas de seguimiento post-adopción
 
-El sistema interactúa con un módulo externo de autenticación y con servicios de notificación (push, SMS, WhatsApp, email).
+El sistema interactúa con un módulo externo de autenticación (no gestionado por este equipo) y con servicios de notificación (push, SMS, WhatsApp, email).
 
 ---
 
@@ -113,139 +117,215 @@ El sistema interactúa con un módulo externo de autenticación y con servicios 
 |-------|-------------|
 | **Veterinario** | Crea alarmas, atiende alertas, completa fichas médicas |
 | **Visitador** | Realiza visitas domiciliarias post-adopción, completa encuestas |
-| **Sistema de Autenticación (externo)** | Gestiona login/registro. Nuestro sistema solo guarda una referencia (\`externalId\`) |
-| **Adoptante** | Cliente que adopta un animal doméstico |
+| **Sistema de Autenticación (externo)** | Gestiona login/registro de usuarios. Nuestro sistema solo guarda una referencia (\`externalId\`) |
+| **Adoptante** | Cliente que adopta un animal doméstico (no tiene acceso al sistema en sí) |
 | **Sistema de Notificaciones (externo)** | Firebase (push), SMS, WhatsApp, Email |
 
 ---
 
 ## 3. Casos de Uso
 
-### CU-01 — Ingresar Animal al Refugio
-**Actor:** Veterinario
+### CU-01 — Ingresar Animal al Refugio ✅
+**Estado:** Implementado — \`IngresoAnimalService.ingresarAnimal\`. Valida el tipo (\`DOMESTICO\`/\`SALVAJE\`, si no lanza \`AnimalException\`), mapea con \`AnimalMapper\` al subtipo correcto, crea automáticamente una \`FichaMedica\` vacía asociada y persiste todo por cascade. Endpoint \`POST /api/animales\` activo en \`AnimalController\`.
+**Actor:** Veterinario  
+**Descripción:** Se registra un animal nuevo con su ficha técnica y médica inicial.
 
-1. El veterinario carga: tipo (doméstico/salvaje), especie, altura, peso, edad, condición médica.
-2. El sistema crea \`AnimalDomestico\` o \`AnimalSalvaje\`.
-3. Se genera automáticamente una \`FichaMedica\` vacía.
+**Flujo:**
+1. El veterinario carga los datos del animal: tipo (doméstico/salvaje), especie, altura, peso, edad aproximada, condición médica.
+2. El sistema crea la entidad \`Animal\` correspondiente (\`AnimalDomestico\` o \`AnimalSalvaje\`).
+3. El sistema genera automáticamente una \`FichaMedica\` vacía asociada al animal.
+4. El sistema persiste el animal y devuelve confirmación.
 
-**Reglas:** RN-01, RN-02
+**Reglas de negocio:** RN-01, RN-02
 
-### CU-02 — Exportar Ficha Médica
-**Actor:** Veterinario
+---
 
-1. Se selecciona el animal y el formato (PDF o Excel).
-2. El sistema delega al exportador correspondiente (\`ExportadorPDF\` / \`ExportadorExcel\`).
+### CU-02 — Exportar Ficha Médica ❌
+**Estado:** Pendiente — la interfaz \`IExportadorStrategy\` y las clases \`ExportadorPDF\`/\`ExportadorExcel\` existen, pero sus métodos \`exportar()\` lanzan \`UnsupportedOperationException\`. No hay endpoint de exportación en \`AnimalController\` ni dependencias de PDF/Excel (iText/POI) en el \`pom.xml\`. Depende de los patrones **Strategy + Decorator + Factory** de exportación.
+**Actor:** Veterinario  
+**Descripción:** Se exporta la ficha médica de un animal en PDF o Excel, con opciones de encriptado y marca de agua.
 
-**Reglas:** RN-03
+**Flujo:**
+1. El veterinario selecciona un animal, el formato de exportación (PDF o Excel) y, opcionalmente, si quiere **encriptar** el archivo y/o agregarle **marca de agua** (RN-15).
+2. El sistema (vía \`ExportadorFactory\`) arma el exportador del formato elegido (Strategy) y lo envuelve con los decoradores pedidos (\`EncriptarDecorator\`, \`MarcaAguaDecorator\`).
+3. El sistema retorna el archivo exportado.
 
-### CU-03 — Crear/Actualizar Alarma de Control
-**Actor:** Veterinario
+**Reglas de negocio:** RN-03, RN-15  
+**Nota:** El diseño permite agregar nuevos formatos sin modificar la lógica existente (Strategy) y combinar transformaciones de salida sin multiplicar clases (Decorator), seleccionando todo desde un punto único (Factory). Ver §15.3 de la spec técnica.
 
-1. El veterinario configura: periodicidad (días), si es tratamiento médico, acciones.
-2. La alarma se guarda con estado \`ACTIVA\`.
+---
 
-**Reglas:** RN-04, RN-07
+### CU-03 — Crear/Actualizar Alarma de Control ✅
+**Estado:** Implementado — \`GestionAlarmaService\` (\`crearAlarma\`, \`actualizarAlarma\` con \`@Transactional\` y actualización in-place vía \`AlarmaMapper.actualizarEntity\`, \`listarAlarmasPorAnimal\`). La alarma se crea con estado \`ACTIVA\` (seteado en \`AlarmaMapper\`). Endpoints \`POST\`/\`GET /api/animales/{animalId}/alarmas\` y \`PUT /api/alarmas/{id}\` activos.
+**Actor:** Veterinario  
+**Descripción:** Se programa una alarma periódica de control para un animal.
 
-### CU-04 — Disparar y Atender Alarma
-**Actor:** Sistema + Veterinario
+**Flujo:**
+1. El veterinario selecciona un animal y configura una alarma.
+2. Configura: periodicidad (en días), si es tratamiento médico activo, y las acciones a ejecutar (de entre las 5 disponibles).
+3. El sistema guarda la alarma asociada al animal con estado \`ACTIVA\`.
 
-1. El sistema dispara la alarma → genera \`Alerta\` → push notification a todos los veterinarios.
-2. Un veterinario atiende: marca acciones completadas, deja comentario.
-3. Si es tratamiento, indica si finalizó → alarma pasa a \`FINALIZADA\` y el animal queda libre.
+**Reglas de negocio:** RN-04, RN-07  
+**Acciones posibles:** Control de parásitos, Colocar antiparasitarios, Comprobar peso y tamaño, Chequear nutrición, Colocar vacuna.
 
-**Reglas:** RN-04, RN-05, RN-06, RN-07
+---
 
-### CU-05 — Registrar Adopción
-**Actor:** Empleado/Veterinario
+### CU-04 — Disparar y Atender Alarma ⚠️
+**Estado:** Parcial.
+- **Atención (pasos 3-8): ✅ Implementado** en \`AtencionAlarmaService.atenderAlarma\`: valida alarma/veterinario/ficha, crea el \`RegistroAtencion\` con acciones realizadas y comentario, lo agrega a la ficha médica (cascade) y transiciona el estado de la alarma a \`FINALIZADA\` (si es tratamiento y finalizó) o \`ATENDIDA\`. Endpoint \`POST /api/alarmas/{id}/atender\` activo. *Pendiente menor:* usa \`RuntimeException\` genérica en lugar de excepciones específicas.
+- **Disparo (pasos 1-2): ❌ Pendiente** — no existe el job/scheduler (\`@Scheduled\`) que detecte alarmas vencidas, ni se genera la \`Alerta\`, ni se envía la push notification. El \`FirebasePushNotification\` (Observer) es un stub que lanza \`UnsupportedOperationException\` y no se invoca desde ningún service. Depende del patrón **Observer** + scheduler.
+**Actor:** Sistema (disparo automático), Veterinario (atención)  
+**Descripción:** Al llegar el momento de una alarma, el sistema genera una alerta para todos los veterinarios.
 
-1. Se cargan datos del adoptante.
-2. Se valida que el animal sea adoptable (no salvaje, no bajo tratamiento, adoptante < 2 adopciones).
+**Flujo:**
+1. El sistema detecta que una alarma está vencida y la dispara.
+2. Se genera una \`Alerta\` y se envía push notification a **todos** los veterinarios [Observer].
+3. Cualquier veterinario puede atender la alarma.
+4. El veterinario marca las acciones como completadas con un comentario.
+5. Si es tratamiento médico, indica si finalizó o no.
+6. Se crea un \`RegistroAtencion\` (evento en la ficha médica).
+7. La alarma pasa a estado \`ATENDIDA\`.
+8. Si el tratamiento finalizó, la alarma pasa a \`FINALIZADA\` y el animal queda libre para adopción.
 
-**Reglas:** RN-08, RN-09, RN-10
+**Reglas de negocio:** RN-04, RN-05, RN-06, RN-07
 
-### CU-06 — Configurar Seguimiento de Visitas
-**Actor:** Empleado/Veterinario
+---
 
-1. Se asigna visitador responsable, cadencia de visitas y preferencia de recordatorio.
+### CU-05 — Registrar Adopción ✅
+**Estado:** Implementado — \`AdopcionService.registrarAdopcion\`. Valida que el animal sea adoptable (\`animal.esAdoptable()\` → RN-08) y que no esté bajo tratamiento activo (\`ficha.estaBajoTratamientoActivo()\` → RN-07), valida el límite de 2 adopciones por adoptante (RN-09), incrementa el contador del adoptante y persiste la \`Adopcion\`. Endpoints \`POST\`/\`GET /api/adopciones\` y \`GET /api/adopciones/{id}\` activos.
+**Actor:** Veterinario / Empleado del refugio  
+**Descripción:** Se registra la adopción de un animal doméstico.
 
-**Reglas:** RN-11, RN-12
+**Flujo:**
+1. Se cargan los datos del adoptante (nombre, apellido, estado civil, email, teléfono, ocupación, si tiene mascotas, motivo, tipos de animales interesados).
+2. Se selecciona el animal doméstico a adoptar.
+3. El sistema valida que el animal sea adoptable (RN-08, RN-09).
+4. Se completan los papeles de adopción.
+5. Se crea el registro de \`Adopcion\`.
 
-### CU-07 — Registrar Visita Domiciliaria
-**Actor:** Visitador
+**Reglas de negocio:** RN-08, RN-09, RN-10
 
-1. El visitador completa la encuesta (estado animal, limpieza, ambiente).
-2. Indica si continúan las visitas.
-3. Se agrega el registro al historial de la ficha médica del animal.
+---
 
-**Reglas:** RN-13, RN-14
+### CU-06 — Configurar Seguimiento de Visitas ✅
+**Estado:** Implementado — \`VisitaSeguimientoService.configurarSeguimiento\` (\`@Transactional\`). Valida visitador y adopción, impide más de un seguimiento por adopción (\`findByAdopcionId\`), mapea y persiste el \`SeguimientoVisitas\` con visitador, cadencia (día/horario) y preferencia de recordatorio. Endpoint \`POST /api/seguimientos\` activo. *Nota:* la preferencia de recordatorio se persiste, pero el envío en sí es CU-08 (pendiente).
+**Actor:** Veterinario / Empleado  
+**Descripción:** Post-adopción, se configura el seguimiento de visitas domiciliarias.
 
-### CU-08 — Enviar Recordatorio de Visita
-**Actor:** Sistema (automático)
+**Flujo:**
+1. Se asocia un \`Visitador\` responsable del seguimiento.
+2. Se define la cadencia de visitas (día y rango horario).
+3. Se configura la preferencia de recordatorio (SMS, WhatsApp o Email).
+4. El sistema guarda el \`SeguimientoVisitas\`.
 
-1. El sistema detecta visitas en los próximos N días.
-2. Envía recordatorio por canal preferido (SMS/WhatsApp/Email).
+**Reglas de negocio:** RN-11, RN-12
 
-**Reglas:** RN-12
+---
+
+### CU-07 — Registrar Visita Domiciliaria ✅
+**Estado:** Implementado — \`VisitaSeguimientoService.registrarVisita\` y \`listarVisitas\` (\`@Transactional\`). Mapea la \`VisitaDomicilio\` con su \`EncuestaSeguimiento\` (estado animal, limpieza, ambiente) y el flag \`continuar_visitas\`, la agrega a la lista de visitas del seguimiento y persiste por cascade. Como \`VisitaDomicilio\` extiende \`Evento\`, queda enlazada también a la ficha médica (RN-14). Endpoints \`POST\`/\`GET /api/seguimientos/{id}/visitas\` activos.
+**Actor:** Visitador  
+**Descripción:** El visitador realiza la visita y registra los resultados.
+
+**Flujo:**
+1. El visitador completa la encuesta de seguimiento (estado del animal, limpieza del lugar, ambiente).
+2. Indica si se deben continuar las visitas o no.
+3. Se crea un registro de \`VisitaDomicilio\` con la \`EncuestaSeguimiento\` y se agrega al historial del animal (ficha médica).
+
+**Reglas de negocio:** RN-13, RN-14
+
+---
+
+### CU-08 — Enviar Recordatorio de Visita ❌
+**Estado:** Pendiente — \`VisitaSeguimientoService.enviarRecordatoriosProximos\` lanza \`UnsupportedOperationException\`. La interfaz \`IRecordatorioStrategy\` y los senders \`SmsSender\`/\`WhatsAppSender\`/\`EmailSender\` existen pero son stubs. No hay scheduler que dispare el envío. El parámetro \`N\` ya está configurado (\`gudboys.recordatorio.dias-anticipacion=3\`). Depende del patrón **Strategy** de recordatorios + scheduler.
+**Actor:** Sistema (automático)  
+**Descripción:** El sistema envía recordatorios 'N' días antes de cada visita.
+
+**Flujo:**
+1. El sistema calcula las visitas próximas dentro de los próximos 'N' días (configurable por parámetro).
+2. Para cada visita próxima, envía recordatorio al adoptante y al visitador según la preferencia elegida (SMS, WhatsApp o Email).
+
+**Reglas de negocio:** RN-12  
+**Nota:** El canal de notificación es seleccionable por Strategy [IRecordatorioStrategy].
 
 ---
 
 ## 4. Reglas de Negocio
 
-### RN-01 — Tipos de Animal
-Doméstico (perro, gato, etc.) o Salvaje (zorro, pingüino, etc.). Determina adoptabilidad.
-*Uso: CU-01, CU-05*
+### RN-01 — Tipos de Animal ✅
+Los animales se clasifican en **Doméstico** (perro, gato, canario, loro, tortuga, etc.) o **Salvaje** (zorro, pingüino, halcón, etc.). Esta clasificación determina si pueden ser adoptados.  
+*Cumplida:* modelada con herencia JPA \`AnimalDomestico\`/\`AnimalSalvaje\` sobre la clase abstracta \`Animal\`; \`IngresoAnimalService\` instancia el subtipo según el \`tipoAnimal\` del request.  
+*Referenciado por: CU-01, CU-05*
 
-### RN-02 — Ficha Técnica Obligatoria
-Todo animal requiere: altura, peso, edad, condición médica.
-*Uso: CU-01*
+### RN-02 — Ficha Técnica Obligatoria ✅
+Todo animal que ingresa al refugio debe tener altura, peso, edad aproximada y condición médica inicial.  
+*Cumplida:* el \`IngresarAnimalRequestDTO\` exige estos campos vía Jakarta Validation (\`@Valid\` en \`AnimalController\`) y las columnas son \`nullable=false\` en la entidad \`Animal\`.  
+*Referenciado por: CU-01*
 
-### RN-03 — Escalabilidad en Exportación
-Debe soportar PDF y Excel sin modificar código existente (Strategy pattern).
-*Uso: CU-02*
+### RN-03 — Escalabilidad en Exportación ❌
+El sistema debe soportar la exportación de fichas médicas a PDF y Excel, con capacidad de agregar nuevos formatos sin modificar código existente.  
+*Pendiente:* el contrato \`IExportadorStrategy\` está definido (preparado para Strategy), pero las implementaciones \`ExportadorPDF\`/\`ExportadorExcel\` son stubs. No se cumple funcionalmente hasta implementar el patrón.  
+*Referenciado por: CU-02*
 
-### RN-04 — Alarma con Acciones
-Periodicidad en días + set de acciones: Control parásitos, Antiparasitarios, Peso/Tamaño, Nutrición, Vacuna.
-*Uso: CU-03, CU-04*
+### RN-04 — Alarma con Acciones ✅
+Cada alarma tiene una periodicidad (en días) y un conjunto de acciones a ejecutar. Las acciones posibles son: Control de parásitos, Colocar antiparasitarios, Comprobar peso y tamaño, Chequear nutrición, Colocar vacuna.  
+*Cumplida:* \`Alarma\` tiene \`periodicidad\` (int días) y \`List<AccionAlarma>\` (\`@ElementCollection\`); el enum \`AccionAlarma\` define las 5 acciones. \`GestionAlarmaService\` las persiste vía \`AlarmaMapper\`.  
+*Referenciado por: CU-03, CU-04*
 
-### RN-05 — Notificación a Veterinarios
-Alarma disparada → push notification a TODOS los veterinarios.
-*Uso: CU-04*
+### RN-05 — Notificación a Veterinarios ❌
+Cuando se dispara una alarma, se envía una push notification a **todos** los veterinarios del sistema.  
+*Pendiente:* el contrato \`INotificadorPush\` está definido y \`FirebasePushNotification\` lo implementa como stub, pero no se invoca desde ningún flujo (no existe el disparo de alarmas). Depende del patrón **Observer**.  
+*Referenciado por: CU-04*
 
-### RN-06 — Registro de Atención
-Debe documentar acciones realizadas + comentario. Si es tratamiento, indicar si finalizó.
-*Uso: CU-04*
+### RN-06 — Registro de Atención ✅
+Cuando un veterinario atiende una alarma, debe dejar un comentario/registro de lo realizado. Si es tratamiento médico, debe indicar si finalizó.  
+*Cumplida:* \`AtencionAlarmaService\` crea un \`RegistroAtencion\` con \`comentario\`, \`accionesRealizadas\`, \`tratamientoFinalizado\` y el veterinario, y lo guarda en la ficha médica.  
+*Referenciado por: CU-04*
 
-### RN-07 — Tratamiento Bloquea Adopción
-Animal en tratamiento médico activo (alarma ACTIVA o ATENDIDA sin finalizar) NO puede adoptarse.
-*Uso: CU-04, CU-05*
+### RN-07 — Estado del Tratamiento y Adopción ✅
+Un animal bajo tratamiento médico activo (alarma de tipo tratamiento en estado ACTIVA o ATENDIDA sin finalizar) **no puede ser adoptado**. Solo puede adoptarse cuando el tratamiento finaliza.  
+*Cumplida:* \`FichaMedica.estaBajoTratamientoActivo()\` y \`AnimalDomestico.esAdoptable()\` revisan si hay alguna alarma de tratamiento en estado \`ACTIVA\`/\`ATENDIDA\`; \`AdopcionService\` bloquea la adopción si es el caso. *Nota de diseño:* hoy se resuelve con el enum \`EstadoAlarma\` plano (sin el patrón **State**, todavía pendiente).  
+*Referenciado por: CU-04, CU-05*
 
-### RN-08 — Solo Domésticos Son Adoptables
-Salvajes NUNCA se adoptan.
-*Uso: CU-05*
+### RN-08 — Solo Domésticos son Adoptables ✅
+Los animales salvajes **nunca** pueden ser adoptados, independientemente de su estado médico.  
+*Cumplida:* \`esAdoptable()\` es un método abstracto de \`Animal\`; \`AnimalSalvaje\` lo sobreescribe devolviendo \`false\` siempre (polimorfismo), y \`AdopcionService\` lo valida antes de adoptar.  
+*Referenciado por: CU-05*
 
-### RN-09 — Límite de Adopciones
-Máximo 2 animales por adoptante.
-*Uso: CU-05*
+### RN-09 — Límite de Adopciones por Adoptante ✅
+Cada adoptante puede adoptar un **máximo de 2 animales** domésticos.  
+*Cumplida:* \`AdopcionService\` rechaza la adopción si \`adoptante.getCantAnimalesAdoptados() >= 2\` e incrementa el contador al concretar cada adopción.  
+*Referenciado por: CU-05*
 
-### RN-10 — Datos del Adoptante
-Requiere: nombre, apellido, estado civil, email, teléfono, ocupación, mascotas existentes, motivo, tipos de interés.
-*Uso: CU-05*
+### RN-10 — Datos del Adoptante ✅
+Al registrar una adopción se requiere: nombre, apellido, estado civil, email, teléfono, ocupación (empleado/estudiante/otros), si tiene otras mascotas, motivo de adopción y tipos de animales de interés.  
+*Cumplida:* el \`RegistrarAdopcionRequestDTO\` recibe todos estos datos y \`AdopcionMapper.toAdoptanteEntity\` los mapea a la entidad \`Adoptante\` (ocupación como enum \`Ocupacion\`).  
+*Referenciado por: CU-05*
 
-### RN-11 — Visitador Responsable
-Todo seguimiento post-adopción tiene un visitador asignado.
-*Uso: CU-06*
+### RN-11 — Asignación de Visitador ✅
+Todo seguimiento post-adopción debe tener un visitador responsable asignado.  
+*Cumplida:* \`configurarSeguimiento\` valida que el \`visitadorId\` exista antes de crear el seguimiento, y el \`SeguimientoVisitas\` referencia obligatoriamente al \`Visitador\`.  
+*Referenciado por: CU-06*
 
-### RN-12 — Recordatorio Configurable
-N días de anticipación (parámetro). Canales: SMS, WhatsApp, Email.
-*Uso: CU-06, CU-08*
+### RN-12 — Recordatorio Configurable ⚠️
+El sistema envía recordatorios 'N' días antes de cada visita (N es configurable por parámetro en application.properties). Los canales disponibles son SMS, WhatsApp y Email.  
+*Parcial:* la **configuración** está lista — el parámetro \`N\` existe (\`gudboys.recordatorio.dias-anticipacion=3\`), la preferencia de canal se persiste (enum \`PreferenciaRecordatorio\` en \`SeguimientoVisitas\`) y los 3 senders existen como Strategy. El **envío** en sí (CU-08) está pendiente.  
+*Referenciado por: CU-06, CU-08*
 
-### RN-13 — Encuesta de Visita
-Tres ítems calificados MALO/REGULAR/BUENO: estado animal, limpieza del lugar, ambiente.
-*Uso: CU-07*
+### RN-13 — Encuesta de Visita ✅
+Cada visita domiciliaria incluye una encuesta con tres ítems calificados como MALO/REGULAR/BUENO: estado general del animal, limpieza del lugar, ambiente.  
+*Cumplida:* \`EncuestaSeguimiento\` tiene \`estadoGeneral\`, \`limpiezaLugar\` y \`ambiente\` como enum \`Calificacion\` (BUENO/REGULAR/MALO); \`registrarVisita\` la crea junto a la \`VisitaDomicilio\`.  
+*Referenciado por: CU-07*
 
-### RN-14 — Historial Unificado
-Todos los eventos (atenciones veterinarias y visitas) quedan en la FichaMedica del animal.
-*Uso: CU-04, CU-07*
+### RN-14 — Historial Unificado ✅
+Todos los eventos del animal (registros de atención veterinaria y visitas domiciliarias) quedan en el historial de la ficha médica del animal, enlazados cronológicamente.  
+*Cumplida:* tanto \`RegistroAtencion\` como \`VisitaDomicilio\` extienden \`Evento\` (herencia JOINED) y \`FichaMedica.eventos\` es \`List<Evento>\` ordenada por \`fechaHora ASC\`. Ver [TD-05] en la spec técnica.  
+*Referenciado por: CU-04, CU-07*
+
+### RN-15 — Opciones de Exportación: Encriptado y Marca de Agua ❌ (nueva, v1.1)
+La exportación de la ficha médica puede, opcionalmente, **encriptar** el archivo resultante y/o agregarle una **marca de agua**. Estas opciones son combinables (ninguna, una, o ambas) e independientes del formato (PDF/Excel).  
+*Pendiente:* introducida por el diagrama UML actualizado (\`PDS-TP.mdj\`) mediante el patrón **Decorator** (\`EncriptarDecorator\`, \`MarcaAguaDecorator\`) sobre el \`IExportadorStrategy\`, orquestado por \`ExportadorFactory\`. No implementada en código. Ver §15.3 de la spec técnica.  
+*Referenciado por: CU-02*
 
 ---
 
@@ -255,17 +335,18 @@ Todos los eventos (atenciones veterinarias y visitas) quedan en la FichaMedica d
 sequenceDiagram
     participant V as Veterinario
     participant S as Sistema
-    participant N as Notificaciones
-    participant VT as Todos los Vets
-    V->>S: POST /api/animales/{id}/alarmas
-    S-->>V: AlarmaResponse (ACTIVA)
-    Note over S: Periodicidad cumplida...
+    participant N as Push Notifications
+    participant VT as Todos los Veterinarios
+
+    V->>S: POST /api/animales/{id}/alarmas (CrearAlarmaRequest)
+    S-->>V: AlarmaResponse (estado: ACTIVA)
+    Note over S: Periodicidad transcurrida...
     S->>S: Disparar Alarma
-    S->>N: Push notification
+    S->>N: Enviar push notification
     N->>VT: Alerta disparada
-    V->>S: POST /api/alarmas/{id}/atender
+    V->>S: POST /api/alarmas/{id}/atender (AtenderAlarmaRequest)
     S->>S: Crear RegistroAtencion en FichaMedica
-    S-->>V: AlarmaResponse (FINALIZADA)
+    S-->>V: AlarmaResponse (estado: ATENDIDA o FINALIZADA)
 \`\`\`
 
 \`\`\`mermaid
@@ -273,13 +354,14 @@ sequenceDiagram
     participant E as Empleado
     participant S as Sistema
     participant Ad as Adoptante
-    E->>S: POST /api/adopciones
-    S->>S: Validar RN-07, RN-08, RN-09
+
+    E->>S: POST /api/adopciones (RegistrarAdopcionRequest)
+    S->>S: Validar animal adoptable (RN-07, RN-08, RN-09)
     S-->>E: AdopcionResponse
-    E->>S: POST /api/seguimientos
+    E->>S: POST /api/seguimientos (ConfigurarSeguimientoRequest)
     S-->>E: SeguimientoResponse
-    Note over S: N dias antes de la visita...
-    S->>Ad: Recordatorio por canal preferido
+    Note over S: N días antes de la visita...
+    S->>Ad: Recordatorio por canal preferido (SMS/WhatsApp/Email)
 \`\`\`
 
 ---
@@ -288,18 +370,19 @@ sequenceDiagram
 
 | Estado | Descripción | Transición |
 |--------|-------------|------------|
-| \`ACTIVA\` | Vigente. Bloquea adopción si es tratamiento. | → ATENDIDA |
-| \`ATENDIDA\` | Atendida sin finalizar tratamiento. Sigue bloqueando. | → FINALIZADA |
-| \`FINALIZADA\` | Tratamiento completo. No bloquea adopción. | (terminal) |
+| \`ACTIVA\` | Alarma programada y vigente. Bloquea adopción si es tratamiento. | → ATENDIDA (al ser atendida) |
+| \`ATENDIDA\` | Fue atendida pero el tratamiento no finalizó. Sigue bloqueando adopción. | → FINALIZADA (al indicar fin de tratamiento) |
+| \`FINALIZADA\` | Tratamiento completo o control sin tratamiento. No bloquea adopción. | (estado terminal) |
 
 ---
 
 ## 7. Fuera de Alcance
-- Login y registro (módulo externo)
-- Permisos y roles (módulo externo)
-- Pasarela de pagos
-- Inventario de medicamentos
-- Aplicación mobile
+
+- Login y registro de usuarios (responsabilidad del módulo de autenticación externo).
+- Gestión de permisos y roles (responsabilidad del módulo de seguridad externo).
+- Pasarela de pagos u honorarios de adopción.
+- Gestión de inventario de medicamentos o insumos.
+- Aplicación mobile (solo backend/API REST).
 
 ---
 
@@ -307,39 +390,79 @@ sequenceDiagram
 
 | Término | Definición |
 |---------|------------|
-| Animal Doméstico | Adoptable (perro, gato, canario, loro, tortuga, etc.) |
-| Animal Salvaje | No adoptable (zorro, pingüino, halcón, etc.) |
-| Ficha Médica | Historial médico completo del animal |
-| Alarma | Control periódico programado por veterinario |
-| Alerta | Notificación generada al dispararse una alarma |
-| RegistroAtencion | Evento en ficha que documenta la atención |
-| SeguimientoVisitas | Configuración del seguimiento post-adopción |
-| VisitaDomicilio | Visita concreta al hogar del adoptante |
-| EncuestaSeguimiento | Evaluación de la visita domiciliaria |
-| ExternalId | Referencia al sistema de autenticación externo |
+| **Animal Doméstico** | Animal que puede ser adoptado (perro, gato, canario, loro, tortuga, etc.) |
+| **Animal Salvaje** | Animal rescatado pero no adoptable (zorro, pingüino, halcón, etc.) |
+| **Ficha Médica** | Historial médico completo del animal: eventos, tratamientos, visitas |
+| **Alarma** | Control periódico programado por un veterinario para un animal |
+| **Alerta** | Notificación generada cuando una alarma se dispara |
+| **RegistroAtencion** | Evento en la ficha médica que documenta la atención de una alarma |
+| **Adoptante** | Cliente externo que adopta un animal |
+| **SeguimientoVisitas** | Configuración del seguimiento post-adopción |
+| **VisitaDomicilio** | Una visita concreta al hogar del adoptante |
+| **EncuestaSeguimiento** | Evaluación de la visita (estado animal, limpieza, ambiente) |
+| **ExternalId** | Referencia al usuario en el sistema de autenticación externo |
 
 ---
 
 ## 9. Supuestos a Validar
 
-- [ ] ¿El disparo de alarmas es automático (scheduler) o manual?
-- [ ] ¿El externalId es UUID o Long?
-- [ ] ¿El parámetro N de recordatorios es global o por adopción?
-- [ ] ¿Puede haber múltiples alarmas activas para el mismo animal?
-- [ ] ¿Las visitas tienen fecha programada de antemano?
+- [ ] ¿El disparo de alarmas es automático (job scheduler) o manual (el veterinario dispara)?
+- [ ] ¿El \`externalId\` del usuario es un UUID o un entero? ¿Qué formato usa el módulo de autenticación?
+- [ ] ¿El adoptante recibe acceso al sistema o solo es un registro de datos?
+- [ ] ¿El parámetro 'N' de recordatorios es global o configurable por adopción?
+- [ ] ¿Puede un veterinario crear múltiples alarmas para el mismo animal simultáneamente?
+- [ ] ¿Las visitas domiciliarias tienen una fecha programada de antemano o son flexibles?
+
+---
+
+## 10. Estado de Implementación
+> Verificado contra el código al 2026-06-22. Leyenda: ✅ Implementado · ⚠️ Parcial · ❌ Pendiente.
+
+### Casos de Uso
+
+| CU | Caso de uso | Estado | Falta |
+|----|-------------|--------|-------|
+| CU-01 | Ingresar animal | ✅ | — |
+| CU-02 | Exportar ficha médica | ❌ | Strategy de exportación + endpoint + deps PDF/Excel |
+| CU-03 | Crear/actualizar alarma | ✅ | — |
+| CU-04 | Disparar y atender alarma | ⚠️ | Disparo automático: Observer + scheduler + generación de \`Alerta\` |
+| CU-05 | Registrar adopción | ✅ | — |
+| CU-06 | Configurar seguimiento | ✅ | — |
+| CU-07 | Registrar visita | ✅ | — |
+| CU-08 | Enviar recordatorio | ❌ | Strategy de recordatorio + scheduler |
+
+### Reglas de Negocio
+
+| RN | Estado | RN | Estado |
+|----|--------|----|--------|
+| RN-01 Tipos de animal | ✅ | RN-08 Solo domésticos adoptables | ✅ |
+| RN-02 Ficha técnica obligatoria | ✅ | RN-09 Límite 2 adopciones | ✅ |
+| RN-03 Escalabilidad exportación | ❌ | RN-10 Datos del adoptante | ✅ |
+| RN-04 Alarma con acciones | ✅ | RN-11 Asignación de visitador | ✅ |
+| RN-05 Notificación a veterinarios | ❌ | RN-12 Recordatorio configurable | ⚠️ |
+| RN-06 Registro de atención | ✅ | RN-13 Encuesta de visita | ✅ |
+| RN-07 Tratamiento bloquea adopción | ✅ | RN-14 Historial unificado | ✅ |
+| | | RN-15 Encriptado / marca de agua | ❌ |
+
+**Resumen:** 6 de 8 casos de uso completos (CU-04 parcial). 11 de 15 reglas cumplidas (RN-12 parcial; RN-03, RN-05, RN-15 pendientes). Lo pendiente (CU-02, CU-08, RN-03, RN-05, RN-15 y el disparo de CU-04) se concentra en los **patrones de diseño** y el **scheduler** automático. El diagrama actualizado (\`PDS-TP.mdj\`) define el diseño objetivo de esos patrones — **State** (alarma), **Composite** (acciones), **Strategy+Decorator+Factory** (exportación), **Factory** (recordatorios) y **Observer** (notificaciones) — detallado en la sección 15 de la spec técnica. Ver también §12 y §14 (plan de cierre).
+
 `;
 
 const TECHNICAL = `
 # Technical Spec — Gud Boys (Refugio Animal)
-> Version: 1.2 | Fecha: 2026-06-20 | Estado: Draft
+> Version: 1.4 | Fecha: 2026-06-22 | Estado: Draft
 >
-> **Changelog v1.2:** \`GestionAlarmaService\` completo (crearAlarma, actualizarAlarma con @Transactional, listarAlarmasPorAnimal). Nuevo \`AlarmaMapper.actualizarEntity\` para actualización in-place. Ver TD-06 y sección 12 actualizada.
+> **Changelog v1.4:** Incorporado el diseño objetivo del diagrama UML actualizado (\`PDS-TP.mdj\`). Se documentan los **patrones de diseño** que define el diagrama en la nueva sección [15](#15-patrones-de-diseño--diseño-objetivo-pds-tpmdj): **State** (\`IEstadoAlarma\`), **Composite** (\`ComponenteAccion\`), **Strategy + Decorator + Factory** para exportación (con encriptado y marca de agua), **Factory** para recordatorios, **Observer** (\`IObservado\`/\`IObservador\`) y **Adapter**. [TD-02](#td-02--accionalarma-como-enum--elementcollection) queda **superado** (el diagrama vuelve a Composite). [TD-04](#td-04--patrones-de-diseño-a-implementar-todo-por-el-equipo) y [§14](#14-trabajo-restante-para-cerrar-el-proyecto) ahora apuntan al diseño concreto. Se marca cada **divergencia entre el código actual y el diagrama objetivo**.
 >
-> **Changelog v1.1:** \`VisitaDomicilio\` ahora extiende \`Evento\` (JOINED) para que las visitas queden en el historial de la ficha médica (RN-14). Ver TD-05.
+> **Changelog v1.3:** Auditoría completa del código. **Toda la lógica de negocio de los 5 services está implementada** salvo \`enviarRecordatoriosProximos\` (CU-08). Se actualizan la sección [12](#12-gaps-detectados-todo) (estado real de services e infraestructura) y [TD-04](#td-04--patrones-de-diseño-a-implementar-todo-por-el-equipo) (qué patrones faltan). \`GlobalExceptionHandler\` (\`@RestControllerAdvice\`) ya existe pero solo cubre \`AnimalNotFoundException\`. **Lo único pendiente para terminar el TP son los patrones de diseño (Strategy ×2, Observer, State) + el scheduler.** Ver nueva sección [14](#14-trabajo-restante-para-cerrar-el-proyecto).
+>
+> **Changelog v1.2:** \`GestionAlarmaService\` completo (\`crearAlarma\`, \`actualizarAlarma\` con \`@Transactional\`, \`listarAlarmasPorAnimal\`). Nuevo método \`AlarmaMapper.actualizarEntity(dto, alarma)\` para actualizar in-place sin duplicar filas. Ver sección [12](#12-gaps-detectados-todo) actualizada con estado real de cada service.
+>
+> **Changelog v1.1:** \`VisitaDomicilio\` ahora extiende \`Evento\` (herencia JOINED) para que las visitas domiciliarias queden en el historial de la ficha médica (RN-14). Ver [TD-05](#td-05--visitadomicilio-como-evento-rn-14).
 
 ## 1. Resumen Técnico
 
-API REST en **Java 17 + Spring Boot 3.3**. Arquitectura en capas (Controller → Service → Repository → Domain). Persistencia JPA/Hibernate sobre **MySQL 8**. La capa de infraestructura implementa exportación (PDF/Excel), notificaciones (Firebase, SMS, WhatsApp, Email) y el adaptador al módulo de autenticación externo.
+API REST construida en **Java con Spring Boot 3**, exponiendo 4 controllers principales (Animal, Alarma, Adopcion, Seguimiento). Arquitectura en capas (Controller → Service → Repository → Domain). Persistencia con **JPA/Hibernate** sobre **MySQL**. La capa de infraestructura implementa adaptadores para exportación (PDF/Excel), notificaciones (Firebase push, SMS, WhatsApp, Email) y el módulo de autenticación externo.
 
 ---
 
@@ -348,116 +471,209 @@ API REST en **Java 17 + Spring Boot 3.3**. Arquitectura en capas (Controller →
 | Tecnología | Versión | Rol |
 |------------|---------|-----|
 | Java | 17 (LTS) | Lenguaje base |
-| Spring Boot | 3.3.x | Framework web/DI |
-| Spring Data JPA | 3.3.x | ORM |
+| Spring Boot | 3.3.x | Framework web y de inyección |
+| Spring Data JPA | 3.3.x | Acceso a datos / ORM |
 | Hibernate | 6.x [INFERRED] | Implementación JPA |
-| MySQL | 8.x | Base de datos |
-| H2 | 2.x | Tests (in-memory) |
-| Lombok | 1.18.x | Reducción boilerplate |
-| Jakarta Validation | 3.x | Validación DTOs |
+| MySQL | 8.x | Base de datos relacional |
+| H2 | 2.x | Base de datos en memoria para tests |
+| Lombok | 1.18.x | Reducción de boilerplate |
+| Jakarta Validation | 3.x | Validación de DTOs |
 | Maven | 3.9.x | Build tool |
 
 ---
 
 ## 3. Arquitectura
 
+**Estilo:** Arquitectura en capas (Layered Architecture) + separación de dominio.
+
 \`\`\`
 com.gudboys/
-├── controller/      # HTTP endpoints
+├── controller/          # Capa de presentación — recibe HTTP, delega a service
 ├── dto/
-│   ├── request/     # Input DTOs
-│   └── response/    # Output DTOs
-├── mapper/          # DTO ↔ Entity
-├── service/         # Interfaces de servicio
-│   └── impl/        # Implementaciones (TODO)
-├── domain/          # Entidades JPA
-│   └── enums/       # Enumeraciones
-├── repository/      # Spring Data interfaces
+│   ├── request/         # Objetos de entrada de la API
+│   └── response/        # Objetos de salida de la API
+├── mapper/              # Conversión entre DTOs y entidades de dominio
+├── service/             # Interfaces de servicio (contratos)
+│   └── impl/            # Implementaciones (lógica de negocio — a completar)
+├── domain/              # Entidades JPA y enums de dominio
+│   └── enums/           # Enumeraciones del dominio
+├── repository/          # Interfaces Spring Data JPA
 ├── infrastructure/
-│   ├── export/      # IExportadorStrategy, PDF, Excel
-│   ├── notification/ # Push, SMS, WhatsApp, Email
-│   └── auth/        # AuthServiceAdapter
-└── config/          # DatabaseConfig
+│   ├── export/          # ExportadorPDF, ExportadorExcel
+│   ├── notification/    # FirebasePush, SmsSender, WhatsAppSender, EmailSender
+│   └── auth/            # AuthServiceAdapter
+└── config/              # Configuración de base de datos y beans
 \`\`\`
 
 ---
 
 ## 4. Modelo de Datos
 
-### Animal (JOINED inheritance)
-- \`id\`, \`altura\`, \`peso\`, \`edad\`, \`condicionMedica\`
-- → FichaMedica (1:1), Alarma (1:N)
+### Animal (tabla: \`animales\`) — abstract
+| Campo | Tipo | Notas |
+|-------|------|-------|
+| id | BIGINT PK | Auto-generado |
+| altura | DOUBLE | En metros |
+| peso | DOUBLE | En kg |
+| edad | DOUBLE | Aproximada en años |
+| condicion_medica | BOOLEAN | true = necesita atención médica |
+| dtype | VARCHAR | Discriminador JPA (JOINED inheritance) |
 
-### AnimalDomestico extends Animal
-- \`especie\`
-- \`esAdoptable()\`: false si tiene alarma de tratamiento ACTIVA/ATENDIDA
+**Relaciones:** \`FichaMedica\` (1:1), \`Alarma\` (1:N)
 
-### AnimalSalvaje extends Animal
-- \`especie\`
-- \`esAdoptable()\`: siempre false
+### AnimalDomestico (tabla: \`animales_domesticos\`)
+| Campo | Tipo |
+|-------|------|
+| id | FK → animales.id |
+| especie | VARCHAR | perro, gato, canario, loro, tortuga, etc. |
 
-### FichaMedica
-- \`id\`, → animal (1:1), → eventos (1:N ordenados por fecha)
+### AnimalSalvaje (tabla: \`animales_salvajes\`)
+| Campo | Tipo |
+|-------|------|
+| id | FK → animales.id |
+| especie | VARCHAR | zorro, pingüino, halcón, etc. |
 
-### Evento (JOINED inheritance)
-- \`id\`, \`descripcion\`, \`fechaHora\`, → fichaMedica
+### FichaMedica (tabla: \`fichas_medicas\`)
+| Campo | Tipo | Notas |
+|-------|------|-------|
+| id | BIGINT PK | |
+| animal_id | BIGINT FK | → animales.id, UNIQUE |
 
-### RegistroAtencion extends Evento
-- \`comentario\`, \`tratamientoFinalizado\`, → veterinario
-- \`accionesRealizadas\`: List<AccionAlarma> (ElementCollection)
+**Relaciones:** \`Evento\` (1:N)
 
-### Alarma
-- \`id\`, \`periodicidad\`, \`esTratamientoMedico\`, \`estado\` (EstadoAlarma)
-- → animal, \`acciones\`: List<AccionAlarma> (ElementCollection)
+### Evento (tabla: \`eventos\`) — abstract
+| Campo | Tipo | Notas |
+|-------|------|-------|
+| id | BIGINT PK | |
+| descripcion | VARCHAR | |
+| fecha_hora | DATETIME | |
+| ficha_medica_id | BIGINT FK | → fichas_medicas.id |
+| dtype | VARCHAR | Discriminador (JOINED inheritance) |
 
-### Usuario (JOINED inheritance)
-- \`id\`, \`externalId\`, \`nombre\`, \`email\`
-- → Veterinario, Visitador
+### RegistroAtencion (tabla: \`registros_atencion\`)
+| Campo | Tipo | Notas |
+|-------|------|-------|
+| id | BIGINT FK | → eventos.id |
+| comentario | TEXT | |
+| tratamiento_finalizado | BOOLEAN | null si no es tratamiento |
+| veterinario_id | BIGINT FK | → veterinarios.id |
 
-### Adoptante
-- \`id\`, \`nombre\`, \`apellido\`, \`estadoCivil\`, \`email\`, \`telefono\`
-- \`ocupacion\` (Ocupacion enum), \`tieneMascotas\`, \`motivoAdopcion\`
-- \`tiposAnimalesInteresados\`: List<String> (ElementCollection)
-- \`cantAnimalesAdoptados\` (max 2)
+**Relaciones:** \`AccionAlarma[]\` (ElementCollection en tabla \`registro_acciones\`)
 
-### Adopcion
-- → adoptante, → animal (AnimalDomestico, 1:1), \`fechaAdopcion\`
-- → seguimientoVisitas (1:1)
+### Alarma (tabla: \`alarmas\`)
+| Campo | Tipo | Notas |
+|-------|------|-------|
+| id | BIGINT PK | |
+| periodicidad | INT | En días |
+| es_tratamiento_medico | BOOLEAN | |
+| estado | ENUM(ACTIVA,ATENDIDA,FINALIZADA) | **Código actual.** El diagrama objetivo lo modela como **State** (\`IEstadoAlarma\`: \`EstadoActiva\`/\`EstadoAtendida\`/\`EstadoFinalizada\`); ver [§15.1](#151-state--estado-de-la-alarma). Persistencia: se conserva una columna discriminadora del estado y se reconstruye el objeto State al cargar. |
+| animal_id | BIGINT FK | → animales.id |
 
-### SeguimientoVisitas
-- → adopcion, → visitador, \`diaVisita\`, \`horarioVisita\`
-- \`preferenciaRecordatorio\` (PreferenciaRecordatorio enum)
-- → visitas: List<VisitaDomicilio>
+**Relaciones:** \`AccionAlarma[]\` (ElementCollection en tabla \`alarma_acciones\`) — **código actual**. El diagrama objetivo usa **Composite** (\`ComponenteAccion\`); ver [§15.2](#152-composite--acciones-de-la-alarma).
 
-### VisitaDomicilio — extiende Evento
-- → seguimientoVisitas, \`fechaVisita\`, \`continuarVisitas\`
-- → encuesta: EncuestaSeguimiento (1:1)
-- Hereda de \`Evento\`: \`descripcion\`, \`fechaHora\`, → fichaMedica. Queda en el historial unificado de la ficha (RN-14, TD-05).
+### Alerta (tabla: \`alertas\`)
+| Campo | Tipo |
+|-------|------|
+| id | BIGINT PK |
+| alarma_id | BIGINT FK |
+| fecha_disparo | DATETIME |
+| atendida | BOOLEAN |
 
-### EncuestaSeguimiento
-- \`estadoGeneral\`, \`limpiezaLugar\`, \`ambiente\` (Calificacion enum)
+### Usuario (tabla: \`usuarios\`) — abstract
+| Campo | Tipo | Notas |
+|-------|------|-------|
+| id | BIGINT PK | |
+| external_id | VARCHAR | Referencia al módulo de autenticación externo |
+| nombre | VARCHAR | |
+| email | VARCHAR | |
+| dtype | VARCHAR | Discriminador |
+
+### Veterinario (tabla: \`veterinarios\`)
+| Campo | Tipo |
+|-------|------|
+| id | BIGINT FK | → usuarios.id |
+
+### Visitador (tabla: \`visitadores\`)
+| Campo | Tipo |
+|-------|------|
+| id | BIGINT FK | → usuarios.id |
+
+### Adoptante (tabla: \`adoptantes\`)
+| Campo | Tipo | Notas |
+|-------|------|-------|
+| id | BIGINT PK | |
+| nombre | VARCHAR | |
+| apellido | VARCHAR | |
+| estado_civil | VARCHAR | |
+| email | VARCHAR | |
+| telefono | VARCHAR | |
+| ocupacion | ENUM(EMPLEADO,ESTUDIANTE,OTROS) | |
+| tiene_mascotas | BOOLEAN | |
+| motivo_adopcion | TEXT | |
+| tipos_animales_interesados | VARCHAR | [INFERRED] almacenado como JSON o separado por comas |
+| cant_animales_adoptados | INT | Validar ≤ 2 en service (RN-09) |
+
+### Adopcion (tabla: \`adopciones\`)
+| Campo | Tipo |
+|-------|------|
+| id | BIGINT PK |
+| adoptante_id | BIGINT FK |
+| animal_id | BIGINT FK | → animales_domesticos.id |
+| fecha_adopcion | DATE |
+
+### SeguimientoVisitas (tabla: \`seguimientos_visitas\`)
+| Campo | Tipo | Notas |
+|-------|------|-------|
+| id | BIGINT PK | |
+| adopcion_id | BIGINT FK UNIQUE | |
+| visitador_id | BIGINT FK | |
+| dia_visita | DATE | |
+| horario_visita | VARCHAR | Ej: "14:00-16:00" |
+| preferencia_recordatorio | ENUM(SMS,WHATSAPP,EMAIL) | |
+
+### VisitaDomicilio (tabla: \`visitas_domicilio\`) — extiende \`Evento\`
+| Campo | Tipo | Notas |
+|-------|------|-------|
+| id | BIGINT FK | → eventos.id (subtipo JOINED de \`Evento\`) |
+| seguimiento_id | BIGINT FK | → seguimientos_visitas.id |
+| fecha_visita | DATE | Fecha de la visita en sí (distinta de \`eventos.fecha_hora\`, que es cuándo se registró) |
+| continuar_visitas | BOOLEAN | |
+
+**Herencia:** Al ser subtipo de \`Evento\`, hereda \`descripcion\`, \`fecha_hora\` y \`ficha_medica_id\` (tabla \`eventos\`). Por eso una visita queda enlazada **a la vez** a su \`SeguimientoVisitas\` (vía \`seguimiento_id\`) y a la \`FichaMedica\` del animal (vía \`ficha_medica_id\` heredado), apareciendo en el historial unificado de la ficha (RN-14). Ver [TD-05](#td-05--visitadomicilio-como-evento-rn-14).
+
+### EncuestaSeguimiento (tabla: \`encuestas_seguimiento\`)
+| Campo | Tipo |
+|-------|------|
+| id | BIGINT PK |
+| visita_id | BIGINT FK UNIQUE |
+| estado_general | ENUM(BUENO,REGULAR,MALO) |
+| limpieza_lugar | ENUM(BUENO,REGULAR,MALO) |
+| ambiente | ENUM(BUENO,REGULAR,MALO) |
 
 ---
 
 ## 5. API Surface
 
-| Método | Path | Request DTO | Response DTO |
-|--------|------|-------------|--------------|
-| POST | /api/animales | IngresarAnimalRequestDTO | AnimalResponseDTO |
-| GET | /api/animales | — | List<AnimalResponseDTO> |
-| GET | /api/animales/{id} | — | AnimalResponseDTO |
-| GET | /api/animales/{id}/ficha-medica | — | FichaMedicaResponseDTO |
-| POST | /api/animales/{id}/alarmas | CrearAlarmaRequestDTO | AlarmaResponseDTO |
-| GET | /api/animales/{id}/alarmas | — | List<AlarmaResponseDTO> |
-| PUT | /api/alarmas/{id} | CrearAlarmaRequestDTO | AlarmaResponseDTO |
-| POST | /api/alarmas/{id}/atender | AtenderAlarmaRequestDTO | AlarmaResponseDTO |
-| POST | /api/adopciones | RegistrarAdopcionRequestDTO | AdopcionResponseDTO |
-| GET | /api/adopciones | — | List<AdopcionResponseDTO> |
-| GET | /api/adopciones/{id} | — | AdopcionResponseDTO |
-| POST | /api/seguimientos | ConfigurarSeguimientoRequestDTO | SeguimientoResponseDTO |
-| GET | /api/seguimientos/{id} | — | SeguimientoResponseDTO |
-| POST | /api/seguimientos/{id}/visitas | RegistrarVisitaRequestDTO | VisitaResponseDTO |
-| GET | /api/seguimientos/{id}/visitas | — | List<VisitaResponseDTO> |
+| Método | Path | Descripción | Request DTO | Response DTO |
+|--------|------|-------------|-------------|--------------|
+| POST | /api/animales | Ingresar animal | \`IngresarAnimalRequestDTO\` | \`AnimalResponseDTO\` |
+| GET | /api/animales | Listar animales | — | \`List<AnimalResponseDTO>\` |
+| GET | /api/animales/{id} | Obtener animal | — | \`AnimalResponseDTO\` |
+| GET | /api/animales/{id}/ficha-medica | Ver ficha médica | — | \`FichaMedicaResponseDTO\` |
+| GET | /api/animales/{id}/ficha-medica/exportar | Exportar ficha (param: formato=PDF\\|EXCEL) — ❌ **no implementado** (sin endpoint en \`AnimalController\`, depende del Strategy de exportación) | — | Archivo binario |
+| POST | /api/animales/{animalId}/alarmas | Crear alarma | \`CrearAlarmaRequestDTO\` | \`AlarmaResponseDTO\` |
+| GET | /api/animales/{animalId}/alarmas | Listar alarmas del animal | — | \`List<AlarmaResponseDTO>\` |
+| PUT | /api/alarmas/{id} | Actualizar alarma | \`CrearAlarmaRequestDTO\` | \`AlarmaResponseDTO\` |
+| POST | /api/alarmas/{id}/atender | Atender alarma | \`AtenderAlarmaRequestDTO\` | \`AlarmaResponseDTO\` |
+| POST | /api/adopciones | Registrar adopción | \`RegistrarAdopcionRequestDTO\` | \`AdopcionResponseDTO\` |
+| GET | /api/adopciones | Listar adopciones | — | \`List<AdopcionResponseDTO>\` |
+| GET | /api/adopciones/{id} | Obtener adopción | — | \`AdopcionResponseDTO\` |
+| POST | /api/seguimientos | Configurar seguimiento | \`ConfigurarSeguimientoRequestDTO\` | \`SeguimientoResponseDTO\` |
+| GET | /api/seguimientos/{id} | Obtener seguimiento | — | \`SeguimientoResponseDTO\` |
+| POST | /api/seguimientos/{id}/visitas | Registrar visita | \`RegistrarVisitaRequestDTO\` | \`VisitaResponseDTO\` |
+| GET | /api/seguimientos/{id}/visitas | Listar visitas | — | \`List<VisitaResponseDTO>\` |
+
+**Autenticación:** [TODO] Definir cómo se valida el token del módulo externo (Bearer JWT asumido [ASSUMPTION]).
 
 ---
 
@@ -465,23 +681,32 @@ com.gudboys/
 
 | Servicio | Rol | Adaptador |
 |----------|-----|-----------|
-| Módulo Autenticación | Login/registro usuarios | AuthServiceAdapter |
-| Firebase FCM | Push notifications a vets | FirebasePushNotification |
-| SMS Gateway | Recordatorios SMS | SmsSender |
-| WhatsApp Business | Recordatorios WA | WhatsAppSender |
-| Email SMTP | Recordatorios email | EmailSender |
+| Módulo de Autenticación | Login/registro de Veterinario y Visitador | \`AuthServiceAdapter\` |
+| Firebase Cloud Messaging | Push notifications a veterinarios | \`FirebasePushNotification\` |
+| SMS Gateway | Recordatorios por SMS | \`SmsSender\` |
+| WhatsApp Business API | Recordatorios por WhatsApp | \`WhatsAppSender\` |
+| Email SMTP | Recordatorios por email | \`EmailSender\` |
 
 ---
 
 ## 7. Configuración y Variables de Entorno
 
 \`\`\`properties
+# Base de datos
 spring.datasource.url=jdbc:mysql://localhost:3306/gudboys
 spring.datasource.username=\${DB_USERNAME}
 spring.datasource.password=\${DB_PASSWORD}
+spring.datasource.driver-class-name=com.mysql.cj.jdbc.Driver
 spring.jpa.hibernate.ddl-auto=update
+spring.jpa.show-sql=true
+
+# Recordatorios
 gudboys.recordatorio.dias-anticipacion=3
+
+# Auth externo
 gudboys.auth.service-url=\${AUTH_SERVICE_URL}
+
+# Firebase [TODO]
 gudboys.firebase.server-key=\${FIREBASE_SERVER_KEY}
 \`\`\`
 
@@ -490,97 +715,220 @@ gudboys.firebase.server-key=\${FIREBASE_SERVER_KEY}
 ## 8. Decisiones Técnicas (TD-XX)
 
 ### TD-01 — Herencia JPA con JOINED strategy
-- **Contexto:** Animal, Usuario y Evento tienen subtipos con campos distintos.
-- **Decisión:** \`@Inheritance(strategy = InheritanceType.JOINED)\` — tabla separada por subtipo.
-- **Trade-off:** Más JOINs vs. modelo limpio sin columnas nulas.
+- **Contexto:** Animal tiene dos subtipos (Doméstico/Salvaje) con campos distintos. Lo mismo para Usuario (Veterinario/Visitador) y Evento (RegistroAtencion/VisitaDomicilio como evento).
+- **Decisión:** Usar \`@Inheritance(strategy = InheritanceType.JOINED)\`. Cada subtipo tiene su propia tabla con FK al padre.
+- **Trade-off:** Más queries con JOINs vs. claridad del modelo y ausencia de columnas nulas. Para este volumen de datos, el overhead es negligible.
 - **Status:** Confirmado.
 
-### TD-02 — AccionAlarma como Enum + ElementCollection
-- **Contexto:** El diseño propone Composite para acciones.
-- **Decisión:** \`enum AccionAlarma\` con \`@ElementCollection\` en Alarma y RegistroAtencion.
-- **Trade-off:** Menos flexible, mucho más simple. Suficiente para los requisitos actuales.
-- **Status:** Confirmado.
+### TD-02 — AccionAlarma como Enum + ElementCollection  ⚠️ SUPERADO por el diagrama (v1.4)
+- **Contexto:** El diseño original propone Composite para las acciones de alarma.
+- **Decisión (original):** Modelar \`AccionAlarma\` como \`enum\` con una tabla de colección (\`@ElementCollection\`). Un \`List<AccionAlarma>\` en Alarma y en RegistroAtencion es suficiente para los requerimientos.
+- **Trade-off:** Menos flexibilidad que Composite, pero mucho más simple. Si se necesitan acciones con comportamiento propio (no solo datos), refactorizar a Strategy/Composite.
+- **Status:** **Superado.** El diagrama actualizado (\`PDS-TP.mdj\`) vuelve al patrón **Composite** (\`ComponenteAccion\` + \`AccionComposite\` + hojas por acción). Ver [§15.2](#152-composite--acciones-de-la-alarma). El **código actual todavía usa el enum** \`AccionAlarma\`: migrar a Composite es trabajo pendiente.
 
-### TD-03 — externalId para usuarios externos
-- **Contexto:** Autenticación es responsabilidad de un módulo externo.
-- **Decisión:** Guardar \`externalId\` (String) en Usuario. \`AuthServiceAdapter\` para consultas al módulo externo.
-- **Trade-off:** Acoplamiento ligero — si el servicio externo cambia, solo se modifica el adaptador.
+### TD-03 — Referencia a Usuario externo por externalId
+- **Contexto:** El módulo de autenticación gestiona usuarios. Nuestro sistema no puede crear ni modificar credenciales.
+- **Decisión:** Guardar \`externalId\` (String) en la entidad \`Usuario\`. El \`AuthServiceAdapter\` se usa para obtener datos del usuario cuando sea necesario.
+- **Trade-off:** Acoplamiento ligero al servicio externo; si el servicio cambia, solo se modifica el adaptador.
 - **Status:** Confirmado por enunciado.
 
-### TD-04 — Patrones de diseño pendientes [TODO]
-- **Contexto:** El TP exige Strategy (exportación, recordatorios), Observer (push notifications) y State (Alarma).
-- **Decisión:** Interfaces creadas (\`IExportadorStrategy\`, \`IRecordatorioStrategy\`, \`INotificadorPush\`). Implementaciones pendientes. \`GestionAlarmaService\` ya completo pero sigue usando el enum \`EstadoAlarma\` plano, sin State pattern.
-- **Trade-off:** Sin implementación, la exportación y notificaciones lanzarán UnsupportedOperationException. Sin State, las transiciones de \`Alarma\` (RN-07) se resuelven con if/switch.
-- **Status:** [TODO] Implementación pendiente.
+### TD-04 — Patrones de Diseño a implementar [TODO por el equipo]
+- **Contexto:** El TP exige patrones de diseño. El enunciado implica Strategy (exportación), Observer (notificaciones), Strategy (recordatorios). El TPO define también State para Alarma.
+- **Decisión:** Las interfaces/contratos están creados (\`IExportadorStrategy\`, \`IRecordatorioStrategy\`, \`INotificadorPush\`) y las clases concretas existen registradas como \`@Component\`, pero **todas son stubs** que lanzan \`UnsupportedOperationException\`. La lógica de negocio que las debería orquestar ya está lista y a la espera de ellas.
+- **Estado por patrón (verificado al 2026-06-22):**
 
-### TD-06 — AlarmaMapper.actualizarEntity para actualización in-place
-- **Contexto:** \`actualizarAlarma\` necesitaba aplicar un \`CrearAlarmaRequestDTO\` sobre una \`Alarma\` ya persistida sin duplicar la fila (INSERT en vez de UPDATE).
-- **Decisión:** \`AlarmaMapper.actualizarEntity(dto, alarma)\` muta in-place \`periodicidad\`, \`esTratamientoMedico\` y \`acciones\` sobre la instancia managed y la retorna. No toca \`id\`, \`animal\` ni \`estado\`.
-- **Trade-off:** \`save()\` hace UPDATE sobre la misma PK, sin duplicados. Si se necesita reasignar animal o forzar cambio de estado por este flujo, hay que extender el método.
-- **Status:** Confirmado — implementado y en uso.
+  | Patrón | Dónde | Estado | Qué falta |
+  |--------|-------|--------|-----------|
+  | **Strategy — Exportación** | \`IExportadorStrategy\` → \`ExportadorPDF\`, \`ExportadorExcel\` | ❌ Stubs | Implementar \`exportar()\`, agregar deps (iText/PDFBox y Apache POI) al \`pom.xml\`, crear el selector de estrategia por \`getFormato()\` y exponer el endpoint \`GET .../ficha-medica/exportar\` |
+  | **Strategy — Recordatorios** | \`IRecordatorioStrategy\` → \`SmsSender\`, \`WhatsAppSender\`, \`EmailSender\` | ❌ Stubs | Implementar \`enviarRecordatorio()\`, selector por \`getCanal()\` mapeado a \`PreferenciaRecordatorio\`, y \`VisitaSeguimientoService.enviarRecordatoriosProximos()\` |
+  | **Observer — Notificación a veterinarios** | \`INotificadorPush\` → \`FirebasePushNotification\` | ❌ Stub, sin disparo | Implementar \`notificar()\`, generar la \`Alerta\`, e invocarlo cuando se dispara una alarma (no se llama desde ningún flujo hoy) |
+  | **State — Estado de Alarma** | \`EstadoAlarma\` (enum plano) → diagrama: \`IEstadoAlarma\` + \`EstadoActiva\`/\`EstadoAtendida\`/\`EstadoFinalizada\` | ❌ No aplicado | Encapsular las transiciones \`ACTIVA → ATENDIDA → FINALIZADA\` en clases de estado. Hoy la transición vive en \`AtencionAlarmaService\` con un \`if/else\` y el bloqueo de adopción (RN-07) en \`esAdoptable()\`/\`estaBajoTratamientoActivo()\` comparando el enum |
+
+- **Trade-off:** La funcionalidad cumplida (CU-01, 03, 05, 06, 07 + atención de CU-04) **no depende** de estos patrones, por eso ya funciona. Lo que queda bloqueado es exactamente lo que estos patrones habilitan: exportación (CU-02/RN-03), recordatorios (CU-08/RN-12) y disparo+push de alarmas (CU-04/RN-05). El State es el único "opcional desde lo funcional" (RN-07 ya se cumple con el enum), pero el TP lo pide explícitamente.
+- **Actualización (v1.4):** El diagrama \`PDS-TP.mdj\` agrega además **Composite** (acciones), **Decorator** y **Factory** (exportación) y **Factory** (recordatorios), y formaliza **Observer** con \`IObservado\`/\`IObservador\`. El detalle de cada uno, con sus clases participantes, está en la nueva sección [15](#15-patrones-de-diseño--diseño-objetivo-pds-tpmdj).
+- **Status:** [TODO] — Es el **trabajo principal restante** del proyecto. Ver secciones [14](#14-trabajo-restante-para-cerrar-el-proyecto) y [15](#15-patrones-de-diseño--diseño-objetivo-pds-tpmdj).
+
+### TD-06 — \`AlarmaMapper.actualizarEntity\` para actualización in-place
+- **Contexto:** \`actualizarAlarma\` necesitaba aplicar los cambios de un \`CrearAlarmaRequestDTO\` sobre una \`Alarma\` ya persistida, sin crear una entidad nueva (lo que generaría un \`INSERT\` duplicado en vez de un \`UPDATE\`).
+- **Decisión:** Se agregó \`AlarmaMapper.actualizarEntity(CrearAlarmaRequestDTO dto, Alarma alarma)\`, que muta in-place \`periodicidad\`, \`esTratamientoMedico\` y \`acciones\` sobre la instancia recibida (managed por JPA) y la retorna. No toca \`id\`, \`animal\` ni \`estado\` — esos campos no se actualizan por este flujo.
+- **Trade-off:** Mantiene \`save()\` haciendo \`UPDATE\` sobre la misma fila/PK en vez de duplicar registros. Como contrapartida, si en el futuro se necesita reasignar el animal o forzar un cambio de estado vía esta misma operación, hay que extender el método o agregar uno nuevo — hoy \`actualizarEntity\` ignora esos campos deliberadamente.
+- **Status:** Confirmado — implementado y en uso por \`GestionAlarmaService.actualizarAlarma\`.
 
 ### TD-05 — VisitaDomicilio como Evento (RN-14)
-- **Contexto:** RN-14 exige un historial unificado en la ficha médica (atenciones + visitas). \`VisitaDomicilio\` era una entidad independiente sin relación con \`FichaMedica\`, así que no podía entrar en \`FichaMedica.eventos\` (\`List<Evento>\`). Contradecía RN-14 y la intención ya declarada en TD-01.
-- **Decisión:** \`VisitaDomicilio\` extiende \`Evento\` (JOINED, \`@PrimaryKeyJoinColumn\`, igual que \`RegistroAtencion\`). Pasa a tener dos relaciones: \`SeguimientoVisitas\` y \`FichaMedica\` (heredada). Su PK deja de ser IDENTITY propia y pasa a ser FK a \`eventos.id\`.
-- **Trade-off:** Cambio estructural de schema: con \`ddl-auto=update\` la PK no migra sola, hay que recrear \`visitas_domicilio\` y \`encuestas_seguimiento\` (sin impacto, no había datos). Opcional sumar una rama en \`AnimalMapper\` para exponer datos propios de la visita en el historial.
+- **Contexto:** RN-14 exige que el historial de la ficha médica unifique **registros de atención veterinaria y visitas domiciliarias**. En el modelo inicial, \`VisitaDomicilio\` era una entidad independiente colgada solo de \`SeguimientoVisitas\`, sin relación con \`FichaMedica\`. Era imposible que una visita apareciera en el historial: \`FichaMedica.eventos\` es \`List<Evento>\` y \`VisitaDomicilio\` no era un \`Evento\`. Esto contradecía tanto RN-14 como la intención ya expresada en [TD-01](#td-01--herencia-jpa-con-joined-strategy) ("VisitaDomicilio como evento").
+- **Decisión:** Hacer que \`VisitaDomicilio\` extienda \`Evento\` (herencia JOINED, con \`@PrimaryKeyJoinColumn\`, igual que \`RegistroAtencion\`). La visita pasa a tener dos relaciones simultáneas: \`SeguimientoVisitas\` (su cadencia/contexto de seguimiento) y \`FichaMedica\` (heredada de \`Evento\`, para el historial). Su PK deja de ser \`IDENTITY\` propia y pasa a ser FK a \`eventos.id\`.
+- **Trade-off:** Alinea el código con RN-14 y TD-01 a costa de un cambio estructural de schema. Con \`ddl-auto=update\` la PK de \`visitas_domicilio\` no se migra automáticamente: en entornos existentes hay que recrear las tablas \`visitas_domicilio\` y \`encuestas_seguimiento\`. Como el feature no tenía datos productivos, el impacto es nulo. El \`AnimalMapper\` puede sumar una rama para exponer datos propios de la visita (encuesta, \`continuar_visitas\`) en el historial; sin ella, la visita igualmente aparece con su \`tipo\` y \`descripcion\`.
 - **Status:** Confirmado — refactor en curso por el equipo.
 
 ---
 
 ## 9. Deployment y Runtime
 
-- JAR ejecutable vía \`mvn spring-boot:run\`
-- MySQL 8.x local o Docker
-- Perfil test: H2 in-memory con \`application-test.properties\`
+- **Tipo:** JAR ejecutable (\`java -jar gudboys.jar\`)
+- **Base de datos:** MySQL 8.x en el mismo servidor o contenedor Docker
+- **Arranque local:** \`mvn spring-boot:run\` con variables de entorno configuradas
+- **Perfil de test:** \`application-test.properties\` con H2 en memoria
 
 ---
 
 ## 10. Observabilidad
 
-- [TODO] Spring Actuator: \`/actuator/health\`
-- [TODO] Logging SLF4J + Logback (incluido por defecto)
-- RegistroAtencion persiste historial de atenciones de alarma en BD
+- [TODO] Spring Boot Actuator para endpoints de health y métricas (\`/actuator/health\`)
+- [TODO] Logging con SLF4J + Logback (incluido por defecto en Spring Boot)
+- [TODO] Trazabilidad de atenciones de alarma mediante \`RegistroAtencion\` (persistido en BD)
 
 ---
 
 ## 11. Testing
 
-- [TODO] JUnit 5 + Mockito para services
-- [TODO] @SpringBootTest + H2 para integración
-- Casos críticos: ingreso animal, ciclo alarma, validación adopción (salvaje, tratamiento, límite 2)
+- [TODO] Tests unitarios con JUnit 5 + Mockito para services
+- [TODO] Tests de integración con @SpringBootTest y H2
+- Los tests deben cubrir: ingreso de animal, ciclo de vida de alarma, validación de adopción (animal salvaje, bajo tratamiento, límite de 2)
 
 ---
 
 ## 12. Gaps Detectados [TODO]
 
-**Estado de los Services (verificado en código, 2026-06-20):**
+**Estado de los Services (verificado en código, 2026-06-22):**
 
 | Service | Estado |
 |---------|--------|
-| IngresoAnimalService | Completo |
-| GestionAlarmaService | **Completo** — crearAlarma, actualizarAlarma (@Transactional), listarAlarmasPorAnimal |
-| AtencionAlarmaService | Completo (sin excepciones específicas) |
-| AdopcionService | Completo |
-| VisitaSeguimientoService | Casi completo — configurarSeguimiento, obtenerSeguimiento, registrarVisita y listarVisitas listos. Solo falta enviarRecordatoriosProximos (CU-08), depende de IRecordatorioStrategy |
+| \`IngresoAnimalService\` | ✅ Completo — \`ingresarAnimal\`, \`obtenerAnimal\`, \`listarAnimales\`, \`obtenerFichaMedica\`. Usa excepciones específicas (\`AnimalException\`, \`AnimalNotFoundException\`) |
+| \`GestionAlarmaService\` | ✅ Completo — \`crearAlarma\`, \`actualizarAlarma\` (\`@Transactional\`), \`listarAlarmasPorAnimal\` |
+| \`AtencionAlarmaService\` | ✅ Completo (atención) — crea \`RegistroAtencion\`, transiciona estado. *Pendiente menor:* excepciones genéricas (\`RuntimeException\`) y no dispara el Observer |
+| \`AdopcionService\` | ✅ Completo — valida RN-07/08/09. *Pendiente menor:* excepciones genéricas |
+| \`VisitaSeguimientoService\` | ⚠️ Casi completo — \`configurarSeguimiento\`, \`obtenerSeguimiento\`, \`registrarVisita\` y \`listarVisitas\` listos. Falta solo \`enviarRecordatoriosProximos\` (CU-08), que lanza \`UnsupportedOperationException\` y depende de \`IRecordatorioStrategy\` |
 
-- [TODO] Implementar el método de recordatorios en VisitaSeguimientoService (depende de IRecordatorioStrategy)
-- [TODO] ExportadorPDF y ExportadorExcel (agregar iText/Apache POI al pom.xml)
-- [TODO] FirebasePushNotification (agregar Firebase SDK)
-- [TODO] SmsSender, WhatsAppSender, EmailSender
-- [TODO] AuthServiceAdapter — comunicación con módulo externo
-- [TODO] Job/Scheduler para disparar alarmas automáticamente (@Scheduled)
-- [TODO] @ControllerAdvice para manejo global de excepciones
-- [TODO] Endpoint de exportación de ficha médica (GET /api/animales/{id}/ficha-medica/exportar)
+**Conclusión:** la capa de servicios (lógica de negocio) está prácticamente terminada. Lo pendiente NO es lógica de negocio sino **infraestructura de patrones + scheduler**.
+
+**Estado de la Infraestructura:**
+
+| Componente | Estado |
+|------------|--------|
+| \`ExportadorPDF\` / \`ExportadorExcel\` (\`IExportadorStrategy\`) | ❌ Stub (\`UnsupportedOperationException\`), sin deps en \`pom.xml\` |
+| \`SmsSender\` / \`WhatsAppSender\` / \`EmailSender\` (\`IRecordatorioStrategy\`) | ❌ Stub |
+| \`FirebasePushNotification\` (\`INotificadorPush\`, Observer) | ❌ Stub, nunca invocado |
+| \`AuthServiceAdapter\` | ❌ Stub |
+| Scheduler \`@Scheduled\` (disparo alarmas + recordatorios) | ❌ No existe (\`@EnableScheduling\` tampoco) |
+| \`GlobalExceptionHandler\` (\`@RestControllerAdvice\`) | ⚠️ Existe, pero solo maneja \`AnimalNotFoundException\`; faltan \`AnimalException\` y un handler genérico |
+| Tests (\`src/test\`) | ❌ Carpeta inexistente, cero tests |
+| Seguridad / JWT | ❌ No existe |
+| Flyway / Liquibase | ❌ No existe [ASSUMPTION: no requerido por el TP] |
+
+**Pendientes priorizados:**
+- [TODO] **(Patrón Strategy)** Implementar \`ExportadorPDF\`/\`ExportadorExcel\` + deps PDF/Excel + endpoint de exportación → cierra CU-02/RN-03
+- [TODO] **(Patrón Strategy)** Implementar los 3 senders + \`enviarRecordatoriosProximos\` → cierra CU-08/RN-12
+- [TODO] **(Patrón Observer)** Implementar \`FirebasePushNotification\` + generación de \`Alerta\` + invocación al disparar → cierra RN-05 y el disparo de CU-04
+- [TODO] **(Patrón State)** Encapsular las transiciones de \`EstadoAlarma\` → pedido por el TP
+- [TODO] **(Scheduler)** \`@EnableScheduling\` + jobs \`@Scheduled\` para disparar alarmas vencidas y recordatorios próximos
+- [TODO] Ampliar \`GlobalExceptionHandler\` (manejar \`AnimalException\` y un handler genérico; reemplazar \`RuntimeException\` por excepciones de dominio en los services restantes)
+- [TODO] Implementar \`AuthServiceAdapter\` para obtener datos de usuarios externos
+- [TODO] Tests unitarios/integración (JUnit 5 + Mockito + H2)
+- [TODO] Seguridad con JWT si el módulo externo lo usa
 
 ---
 
 ## 13. Supuestos a Validar
 
-- [ ] ¿MySQL o PostgreSQL?
-- [ ] ¿externalId es UUID String o Long?
-- [ ] ¿El scheduler de alarmas es parte del TP?
-- [ ] ¿Se requiere Spring Security?
-- [ ] ¿Los tipos de animales del adoptante son enum o texto libre?
+- [ ] ¿MySQL es la base de datos elegida o prefieren PostgreSQL / H2 puro?
+- [ ] ¿El externalId del usuario es un UUID String o Long?
+- [ ] ¿El scheduler de alarmas es parte del TP o se asume disparo manual?
+- [ ] ¿Se requiere seguridad HTTP (Spring Security) o el enunciado lo excluye?
+- [ ] ¿Los tipos de animales interesados del adoptante son un enum o texto libre?
+
+---
+
+## 14. Trabajo Restante para Cerrar el Proyecto
+
+La lógica de negocio está esencialmente completa. **Lo que falta para terminar el TP es, casi en su totalidad, la implementación de los patrones de diseño** (que el enunciado exige) más el scheduler que los dispara. Orden sugerido:
+
+### Bloque 1 — Patrones de diseño (núcleo del trabajo restante)
+
+> El diseño objetivo de cada patrón (clases participantes) está en la sección [15](#15-patrones-de-diseño--diseño-objetivo-pds-tpmdj).
+
+1. **Strategy + Decorator + Factory — Exportación de ficha médica** *(CU-02, RN-03, RN-15)*
+   - Agregar dependencias al \`pom.xml\`: iText o Apache PDFBox (PDF) y Apache POI (Excel).
+   - Implementar \`ExportadorPDF.exportarFicha()\` y \`ExportadorExcel.exportarFicha()\` (Strategy).
+   - Crear \`ExportadorDecorator\` + \`EncriptarDecorator\` + \`MarcaAguaDecorator\` (Decorator) para encriptado y marca de agua.
+   - Crear \`ExportadorFactory.crearExportador(formato, encriptar, agua)\` que arma strategy + decoradores.
+   - Exponer \`GET /api/animales/{id}/ficha-medica/exportar?formato=PDF|EXCEL&encriptar=&agua=\` en \`AnimalController\`.
+
+2. **Strategy + Factory — Recordatorios de visita** *(CU-08, RN-12)*
+   - Implementar \`SMSSender\`/\`WhatsAppSender\`/\`EmailSender.enviarRecordatorio(diasAntes)\`.
+   - Crear \`RecordatorioFactory\` que selecciona la estrategia según \`PreferenciaRecordatorio\`.
+   - Completar \`VisitaSeguimientoService.enviarRecordatoriosProximos()\`: buscar visitas dentro de los próximos \`N\` días (\`gudboys.recordatorio.dias-anticipacion\`) y enviar por el canal preferido.
+
+3. **Observer — Notificación a veterinarios** *(CU-04 disparo, RN-05)*
+   - Crear \`IObservado\`/\`IObservador\`/\`INotificadorPushObservador\` e implementar \`FirebasePushNotification\`.
+   - Al disparar una alarma: \`GestionAlarmaService.generarAlerta()\` crea la \`Alerta\` y \`Alerta.alertarVeterinarios()\` notifica a todos los veterinarios suscriptos.
+
+4. **State — Ciclo de vida de la alarma** *(pedido por el TP)*
+   - Crear \`IEstadoAlarma\` + \`EstadoActiva\`/\`EstadoAtendida\`/\`EstadoFinalizada\`; cambiar \`Alarma.estado\` a \`IEstadoAlarma\`, reemplazando el \`if/else\` actual de \`AtencionAlarmaService\` y el enum.
+
+5. **Composite — Acciones de la alarma** *(pedido por el TP)*
+   - Crear \`ComponenteAccion\` + \`AccionComposite\` + las 5 hojas de acción, reemplazando el enum \`AccionAlarma\` + \`@ElementCollection\` (ver [TD-02](#td-02--accionalarma-como-enum--elementcollection-️-superado-por-el-diagrama-v14)).
+
+### Bloque 2 — Scheduler
+
+6. **Disparo automático** — \`@EnableScheduling\` + un job \`@Scheduled\` que detecte alarmas vencidas según \`periodicidad\` y dispare el Observer (item 3), y otro que invoque \`enviarRecordatoriosProximos()\` (item 2).
+
+### Bloque 3 — Robustez (no exigido por patrones, recomendado)
+
+7. Ampliar \`GlobalExceptionHandler\` (manejar \`AnimalException\` + handler genérico) y migrar los \`RuntimeException\` de los services a excepciones de dominio.
+8. \`AuthServiceAdapter\` real (si el módulo externo lo requiere).
+9. Tests (JUnit 5 + Mockito + H2): ciclo de vida de alarma, validaciones de adopción (salvaje, bajo tratamiento, límite 2).
+10. Seguridad JWT (si aplica al alcance).
+
+**En síntesis:** el proyecto está funcionalmente avanzado; el cierre pasa por los **patrones de diseño + scheduler** (Bloques 1 y 2). El Bloque 3 es hardening opcional según el alcance que pida la cátedra. El diseño objetivo de cada patrón está detallado en la sección [15](#15-patrones-de-diseño--diseño-objetivo-pds-tpmdj).
+
+---
+
+## 15. Patrones de Diseño — Diseño Objetivo (PDS-TP.mdj)
+> Esta sección refleja el **diagrama UML actualizado** (\`SDD-output/PDS-TP.mdj\`). Es el **diseño objetivo**: en varios casos el código actual todavía usa una versión más simple — cada divergencia se marca con ⚠️. Se omiten elementos de scratch del diagrama (\`Class1-4\`, \`Interface1-5\`, \`IAlarma\` duplicado, etc.).
+
+### 15.1 State — Estado de la Alarma
+- **Participantes:** interfaz \`IEstadoAlarma\`; estados concretos \`EstadoActiva\`, \`EstadoAtendida\`, \`EstadoFinalizada\` (cada uno \`..|> IEstadoAlarma\`). \`Alarma\` pasa a tener \`estado: IEstadoAlarma\` (dependencia \`Alarma ..> IEstadoAlarma\`).
+- **Intención:** cada estado encapsula la transición válida y el comportamiento (p. ej. si bloquea la adopción). \`Alarma.atender(...)\` delega en el estado actual, que decide el próximo estado.
+- **Persistencia:** mantener una columna discriminadora (\`ACTIVA/ATENDIDA/FINALIZADA\`) en \`alarmas\` y reconstruir la instancia de estado al cargar (factory simple o \`@PostLoad\`).
+- ⚠️ **Divergencia:** el código usa el enum \`EstadoAlarma\`; la transición vive en \`AtencionAlarmaService\` con \`if/else\`. Migrar a las clases de estado.
+
+### 15.2 Composite — Acciones de la alarma
+- **Participantes:** componente \`ComponenteAccion\` (operación común); compuesto \`AccionComposite\` (\`acciones: List<ComponenteAccion>\`); hojas \`ControlParasitosAccion\`, \`ColocarAntiparasitarios\`, \`ComprobarPesoTamanio\`, \`ChequearNutricion\`, \`ColocarVacuna\` (todas \`..|> ComponenteAccion\`).
+- **Intención:** tratar acciones individuales y grupos de acciones de forma uniforme; permite componer una alarma con un árbol de acciones.
+- ⚠️ **Divergencia:** el código usa el enum \`AccionAlarma\` + \`@ElementCollection\` (ver [TD-02](#td-02--accionalarma-como-enum--elementcollection-️-superado-por-el-diagrama-v14), superado). Migrar a Composite.
+
+### 15.3 Exportación: Strategy + Decorator + Factory
+- **Strategy:** \`IExportadorStrategy\` (\`exportarFicha(...)\`) con \`ExportadorPDF\` y \`ExportadorExcel\` (\`..|> IExportadorStrategy\`). \`FichaMedica\` se asocia a \`IExportadorStrategy\`.
+- **Decorator:** \`ExportadorDecorator\` envuelve un \`IExportadorStrategy\` (asociación \`ExportadorDecorator <-> IExportadorStrategy\` + método \`exportadorStrategy(): IExportadorStrategy\`); decoradores concretos \`EncriptarDecorator\` y \`MarcaAguaDecorator\`. Permiten **encriptar** y/o agregar **marca de agua** sin tocar los exportadores base ni multiplicar clases por combinación.
+- **Factory:** \`ExportadorFactory.crearExportador(formato: String, encriptar: boolean, agua: boolean): IExportadorStrategy\` arma la cadena: instancia el exportador base por formato y lo envuelve con los decoradores pedidos (\`ExportadorFactory ..> IExportadorStrategy\`).
+- **Impacto funcional:** introduce un **nuevo requerimiento** — exportar con encriptado y/o marca de agua opcionales (ver RN-15 / CU-02 en la spec funcional). El endpoint de exportación recibirá los flags \`encriptar\` y \`agua\`.
+- ⚠️ **Divergencia:** hoy \`ExportadorPDF\`/\`ExportadorExcel\` son stubs; \`ExportadorDecorator\`, \`EncriptarDecorator\`, \`MarcaAguaDecorator\` y \`ExportadorFactory\` **no existen** en el código.
+
+### 15.4 Factory — Recordatorios
+- **Participantes:** \`IRecordatorioFactory\` / \`RecordatorioFactory\` crean la \`IRecordatorioStrategy\` adecuada según el canal (\`SMSSender\`, \`WhatsAppSender\`, \`EmailSender\`, todos \`..|> IRecordatorioStrategy\`), mapeado desde \`PreferenciaRecordatorio\`. \`RecordatorioFactory ..> IRecordatorioStrategy\`.
+- **Intención:** centralizar la selección del canal; \`VisitaSeguimientoService\` pide al factory la estrategia y delega el envío.
+- ⚠️ **Divergencia:** los senders son stubs; el factory **no existe** en el código.
+
+### 15.5 Observer — Notificación de alarmas a veterinarios
+- **Participantes:** sujeto \`IObservado\` y observador \`IObservador\`. \`INotificadorPushObservador\` extiende \`IObservador\` y realiza \`IObservado\`/\`IObservador\`. \`Alarma\`/\`Alerta\` actúan como observados (\`..|> IObservado\` / \`..|> INotificadorPushObservador\`); \`Veterinario\` es observador (\`..|> IObservador\`); \`FirebasePushNotification ..|> INotificadorPushObservador\`.
+- **Flujo:** \`GestionAlarmaService.generarAlerta()\` crea la \`Alerta\`; \`Alerta.alertarVeterinarios()\` notifica a todos los veterinarios suscriptos vía el notificador push.
+- ⚠️ **Divergencia:** existe solo \`FirebasePushNotification\` como stub (\`INotificadorPush\`); faltan \`IObservado\`/\`IObservador\`/\`INotificadorPushObservador\`, la generación de \`Alerta\` y el disparo.
+
+### 15.6 Adapter — Autenticación
+- \`AuthServiceAdapter\` (Infraestructura) adapta el módulo externo de autenticación. Ya documentado en [TD-03](#td-03--referencia-a-usuario-externo-por-externalid); sigue como stub en el código.
+
+### Resumen de patrones
+
+| Patrón | Aplicado a | Clases clave (diagrama) | Estado en código |
+|--------|-----------|--------------------------|------------------|
+| State | Estado de alarma | \`IEstadoAlarma\`, \`EstadoActiva/Atendida/Finalizada\` | ⚠️ enum plano |
+| Composite | Acciones de alarma | \`ComponenteAccion\`, \`AccionComposite\`, hojas | ⚠️ enum + ElementCollection |
+| Strategy | Exportación / Recordatorios | \`IExportadorStrategy\`, \`IRecordatorioStrategy\` | ❌ stubs |
+| Decorator | Exportación (encriptar, marca de agua) | \`ExportadorDecorator\`, \`EncriptarDecorator\`, \`MarcaAguaDecorator\` | ❌ no existe |
+| Factory | Exportación / Recordatorios | \`ExportadorFactory\`, \`RecordatorioFactory\` | ❌ no existe |
+| Observer | Alerta → veterinarios | \`IObservado\`, \`IObservador\`, \`INotificadorPushObservador\` | ❌ stub parcial |
+| Adapter | Auth externo | \`AuthServiceAdapter\` | ❌ stub |
+
 `;
 
 let currentTab = 'functional';
