@@ -3,6 +3,7 @@ package com.gudboys.mapper;
 import com.gudboys.domain.Alarma;
 import com.gudboys.domain.Animal;
 import com.gudboys.domain.enums.EstadoAlarma;
+import com.gudboys.domain.state.EstadoActiva;
 import com.gudboys.dto.request.CrearAlarmaRequestDTO;
 import com.gudboys.dto.response.AlarmaResponseDTO;
 import org.springframework.stereotype.Component;
@@ -15,7 +16,7 @@ public class AlarmaMapper {
         alarma.setPeriodicidad(dto.getPeriodicidad());
         alarma.setEsTratamientoMedico(dto.getEsTratamientoMedico());
         alarma.setAcciones(dto.getAcciones());
-        alarma.setEstado(EstadoAlarma.ACTIVA);
+        alarma.setEstado(new EstadoActiva());
         alarma.setAnimal(animal);
         return alarma;
     }
@@ -34,7 +35,7 @@ public class AlarmaMapper {
                 .animalId(alarma.getAnimal().getId())
                 .periodicidad(alarma.getPeriodicidad())
                 .esTratamientoMedico(alarma.isEsTratamientoMedico())
-                .estado(alarma.getEstado())
+                .estado(alarma.getEstado().getTipo())
                 .acciones(alarma.getAcciones())
                 .build();
     }

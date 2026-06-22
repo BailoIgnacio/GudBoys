@@ -21,7 +21,7 @@ public class AnimalDomestico extends Animal {
     public boolean esAdoptable() {
         boolean tieneAlarmaActivaConTratamiento = getAlarmas().stream()
                 .anyMatch(a -> a.isEsTratamientoMedico()
-                        && (a.getEstado() == EstadoAlarma.ACTIVA || a.getEstado() == EstadoAlarma.ATENDIDA));
+                        && a.getEstado().bloqueaAdopcion());
         return !tieneAlarmaActivaConTratamiento;
     }
 }

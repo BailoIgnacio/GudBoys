@@ -1,7 +1,6 @@
 package com.gudboys.service.impl;
 
 import com.gudboys.domain.Alarma;
-import com.gudboys.domain.Evento;
 import com.gudboys.domain.RegistroAtencion;
 import com.gudboys.domain.Veterinario;
 import com.gudboys.dto.request.AtenderAlarmaRequestDTO;
@@ -14,7 +13,6 @@ import com.gudboys.service.IAtencionAlarmaService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import com.gudboys.domain.FichaMedica;
-import com.gudboys.domain.enums.EstadoAlarma;;
 
 @Service
 @RequiredArgsConstructor
@@ -52,11 +50,7 @@ public class AtencionAlarmaService implements IAtencionAlarmaService {
         ficha.agregarEvento(registro);
         
         //Cambio estado de la alarma
-        if (alarma.isEsTratamientoMedico() && Boolean.TRUE.equals(dto.getTratamientoFinalizado())) {
-            alarma.setEstado(EstadoAlarma.FINALIZADA);
-        } else {
-            alarma.setEstado(EstadoAlarma.ATENDIDA);
-        }
+        alarma.getEstado().atender(alarma, Boolean.TRUE.equals(dto.getTratamientoFinalizado()));
         
         // Guardo las entidades que modifiqué
         fichaMedicaRepository.save(ficha);

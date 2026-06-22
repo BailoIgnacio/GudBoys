@@ -1,7 +1,10 @@
 package com.gudboys.domain;
 
 import com.gudboys.domain.enums.AccionAlarma;
-import com.gudboys.domain.enums.EstadoAlarma;
+import com.gudboys.domain.state.EstadoActiva;
+import com.gudboys.domain.state.EstadoAlarmaConverter;
+import com.gudboys.domain.state.IEstadoAlarma;
+
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -27,9 +30,9 @@ public class Alarma {
     @Column(nullable = false)
     private boolean esTratamientoMedico;
 
-    @Enumerated(EnumType.STRING)
+    @Convert(converter = EstadoAlarmaConverter.class)
     @Column(nullable = false)
-    private EstadoAlarma estado = EstadoAlarma.ACTIVA;
+    private IEstadoAlarma estado = new EstadoActiva();
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "animal_id", nullable = false)
