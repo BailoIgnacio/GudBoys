@@ -35,6 +35,6 @@ public class FichaMedica {
     public boolean estaBajoTratamientoActivo() {
         return animal.getAlarmas().stream()
                 .anyMatch(a -> a.isEsTratamientoMedico()
-                        && (a.getEstado().name().equals("ACTIVA") || a.getEstado().name().equals("ATENDIDA")));
+                        && (a.getEstado().bloqueaAdopcion()));
     }
 }

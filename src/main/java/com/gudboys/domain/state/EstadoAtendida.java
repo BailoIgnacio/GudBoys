@@ -2,22 +2,24 @@ package com.gudboys.domain.state;
 
 import com.gudboys.domain.Alarma;
 import com.gudboys.domain.enums.EstadoAlarma;
+import lombok.NoArgsConstructor;
 
-/**
- * Estado ATENDIDA. Scaffolding (tarea A.1) — completar la lógica.
- */
+
+@NoArgsConstructor
 public class EstadoAtendida implements IEstadoAlarma {
 
     @Override
     public void atender(Alarma alarma, boolean tratamientoFinalizado) {
-        // TODO A.1: desde ATENDIDA, al finalizar el tratamiento -> FINALIZADA
-        throw new UnsupportedOperationException("TODO A.1: transición desde ATENDIDA");
+        if(alarma.isEsTratamientoMedico() && tratamientoFinalizado){
+            alarma.setEstado(new EstadoFinalizada());
+        } else{
+            alarma.setEstado(new EstadoAtendida());
+        }
     }
 
     @Override
     public boolean bloqueaAdopcion() {
-        // TODO A.1: una alarma de tratamiento ATENDIDA (sin finalizar) sigue bloqueando
-        throw new UnsupportedOperationException("TODO A.1: bloqueaAdopcion en ATENDIDA");
+        return true;
     }
 
     @Override
