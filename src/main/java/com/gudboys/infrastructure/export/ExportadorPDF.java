@@ -7,13 +7,10 @@ import org.springframework.stereotype.Component;
 public class ExportadorPDF implements IExportadorStrategy {
 
     @Override
-    public byte[] exportar(FichaMedica fichaMedica) {
-        // TODO: implementar exportacion a PDF (usar iText o Apache PDFBox)
-        throw new UnsupportedOperationException("Not implemented yet");
+    public String exportar(FichaMedica fichaMedica) {
+        return "Se exportó la ficha médica #" + fichaMedica.getId() + " en formato " + getFormato();
     }
 
     @Override
-    public String getFormato() {
-        return "PDF";
-    }
+    public String getFormato() {return "PDF";}
 }

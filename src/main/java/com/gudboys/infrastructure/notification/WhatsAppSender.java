@@ -7,9 +7,9 @@ import org.springframework.stereotype.Component;
 public class WhatsAppSender implements IRecordatorioStrategy {
 
     @Override
-    public void enviarRecordatorio(SeguimientoVisitas seguimiento) {
-        // TODO: implementar envio de recordatorio por WhatsApp
-        throw new UnsupportedOperationException("Not implemented yet");
+    public String enviarRecordatorio(SeguimientoVisitas seguimiento) {
+        // TODO: devolver un mensaje simulado, ej: "Se envió recordatorio por WhatsApp al seguimiento #" + seguimiento.getId()
+        return "Se envió recordatorio por WhatsApp al seguimiento #" + seguimiento.getId();
     }
 
     @Override

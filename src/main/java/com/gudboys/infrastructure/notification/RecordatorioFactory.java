@@ -22,8 +22,9 @@ public class RecordatorioFactory implements IRecordatorioFactory {
 
     @Override
     public IRecordatorioStrategy crear(PreferenciaRecordatorio preferencia) {
-        // TODO B.5: elegir la estrategia cuyo getCanal() coincida con la preferencia
-        //  (SMS / WHATSAPP / EMAIL) y devolverla
-        throw new UnsupportedOperationException("TODO B.5: seleccionar estrategia por canal");
+        return estrategias.stream()
+                .filter(estrategia -> estrategia.getCanal().equalsIgnoreCase(String.valueOf(preferencia)))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("Canal de recordatorio no soportado: " + preferencia));
     }
 }

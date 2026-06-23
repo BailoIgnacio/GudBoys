@@ -7,9 +7,8 @@ import org.springframework.stereotype.Component;
 public class ExportadorExcel implements IExportadorStrategy {
 
     @Override
-    public byte[] exportar(FichaMedica fichaMedica) {
-        // TODO: implementar exportacion a Excel (usar Apache POI)
-        throw new UnsupportedOperationException("Not implemented yet");
+    public String exportar(FichaMedica fichaMedica) {
+        return "Se exportó la ficha médica #" + fichaMedica.getId() + " en formato " + getFormato();
     }
 
     @Override

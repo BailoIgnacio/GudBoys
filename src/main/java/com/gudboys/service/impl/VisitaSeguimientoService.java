@@ -9,6 +9,8 @@ import com.gudboys.dto.request.ConfigurarSeguimientoRequestDTO;
 import com.gudboys.dto.request.RegistrarVisitaRequestDTO;
 import com.gudboys.dto.response.SeguimientoResponseDTO;
 import com.gudboys.dto.response.VisitaResponseDTO;
+import com.gudboys.infrastructure.notification.IRecordatorioFactory;
+import com.gudboys.infrastructure.notification.IRecordatorioStrategy;
 import com.gudboys.mapper.SeguimientoMapper;
 import com.gudboys.repository.IAdopcionRepository;
 import com.gudboys.repository.ISeguimientoVisitasRepository;
@@ -16,15 +18,18 @@ import com.gudboys.repository.IVisitadorRepository;
 import com.gudboys.service.IVisitaSeguimientoService;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
-import org.springframework.beans.factory.config.RuntimeBeanNameReference;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class VisitaSeguimientoService implements IVisitaSeguimientoService {
@@ -33,6 +38,10 @@ public class VisitaSeguimientoService implements IVisitaSeguimientoService {
     private final IAdopcionRepository adopcionRepository;
     private final IVisitadorRepository visitadorRepository;
     private final SeguimientoMapper seguimientoMapper;
+    private final IRecordatorioFactory recordatorioFactory;
+
+    @Value("${gudboys.recordatorio.dias-anticipacion}")
+    private int diasAnticipacion;
 
     //-------------------------------------------------------------------------------
 
@@ -111,12 +120,18 @@ public class VisitaSeguimientoService implements IVisitaSeguimientoService {
 
     //-------------------------------------------------------------------------------
 
-    //Para este hay que solucionar los senders primero.
+    @Transactional(readOnly = true)
     @Override
     public void enviarRecordatoriosProximos() {
+        //busco los seguimientos con visita entre hoy y hoy+diasAnticipacion
+        List<SeguimientoVisitas> seguimientosProximos = seguimientoRepository
+            .findVisitasEntreFechas(LocalDate.now(), LocalDate.now().plusDays(diasAnticipacion));
 
-        // TODO: implementar logica de envio de recordatorios (usar IRecordatorioStrategy)
-        // Buscar visitas en los proximos N dias (gudboys.recordatorio.dias-anticipacion)
-        throw new UnsupportedOperationException("Not implemented yet");
+        //por cada seguimiento, elijo la estrategia segun su preferencia y envio el recordatorio
+        for (SeguimientoVisitas seguimiento : seguimientosProximos) {
+            IRecordatorioStrategy strategy = recordatorioFactory.crear(seguimiento.getPreferenciaRecordatorio());
+            String resultado = strategy.enviarRecordatorio(seguimiento);
+            log.info(resultado);
+        }
     }
 }
