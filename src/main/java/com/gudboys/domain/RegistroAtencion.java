@@ -1,5 +1,7 @@
 package com.gudboys.domain;
 
+import com.gudboys.domain.accion.AccionComposite;
+import com.gudboys.domain.accion.AccionFactory;
 import com.gudboys.domain.enums.AccionAlarma;
 import jakarta.persistence.*;
 import lombok.Getter;
@@ -31,4 +33,10 @@ public class RegistroAtencion extends Evento {
     @CollectionTable(name = "registro_acciones", joinColumns = @JoinColumn(name = "registro_id"))
     @Column(name = "accion")
     private List<AccionAlarma> accionesRealizadas = new ArrayList<>();
+
+    /** Vista Composite de las acciones realizadas (enum persistido → árbol en memoria). */
+    @Transient
+    public AccionComposite getAccionesRealizadasComposite() {
+        return AccionFactory.crearComposite(accionesRealizadas);
+    }
 }

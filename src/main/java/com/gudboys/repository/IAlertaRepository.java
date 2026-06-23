@@ -12,4 +12,7 @@ public interface IAlertaRepository extends JpaRepository<Alerta, Long> {
     List<Alerta> findByAtendidaFalse();
 
     List<Alerta> findByAlarmaId(Long alarmaId);
+
+    /** Alertas pendientes (sin atender) de una alarma — se concilian al atenderla (CU-04). */
+    List<Alerta> findByAlarmaIdAndAtendidaFalse(Long alarmaId);
 }

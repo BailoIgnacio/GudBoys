@@ -1,6 +1,5 @@
 package com.gudboys.domain;
 
-import com.gudboys.domain.enums.EstadoAlarma;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;

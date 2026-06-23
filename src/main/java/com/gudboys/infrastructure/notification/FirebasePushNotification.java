@@ -1,18 +1,22 @@
 package com.gudboys.infrastructure.notification;
 
 import com.gudboys.domain.Alerta;
-import com.gudboys.domain.Veterinario;
+import com.gudboys.domain.observer.INotificadorPushObservador;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
-import java.util.List;
-
+/**
+ * Canal de notificación push (Firebase) como observador del patrón Observer.
+ * Envío simulado por log — alcanza para el TP; reemplazar por Firebase Cloud Messaging real si se requiere.
+ */
 @Component
-public class FirebasePushNotification implements INotificadorPush {
+@Slf4j
+public class FirebasePushNotification implements INotificadorPushObservador {
 
     @Override
-    public void notificar(Alerta alerta, List<Veterinario> veterinarios) {
-        // TODO: implementar envio de push notification via Firebase Cloud Messaging
-        // a todos los veterinarios cuando se dispara una alarma
-        throw new UnsupportedOperationException("Not implemented yet");
+    public void actualizar(Alerta alerta) {
+        log.info("[Firebase PUSH simulado] Enviando notificación push por alerta {} (alarma {})",
+                alerta.getId(),
+                alerta.getAlarma() != null ? alerta.getAlarma().getId() : null);
     }
 }

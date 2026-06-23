@@ -1,18 +1,23 @@
 package com.gudboys.service.impl;
 
 import com.gudboys.domain.Alarma;
+import com.gudboys.domain.Alerta;
+import com.gudboys.domain.accion.AccionFactory;
 import com.gudboys.domain.RegistroAtencion;
 import com.gudboys.domain.Veterinario;
 import com.gudboys.dto.request.AtenderAlarmaRequestDTO;
 import com.gudboys.dto.response.AlarmaResponseDTO;
 import com.gudboys.mapper.AlarmaMapper;
 import com.gudboys.repository.IAlarmaRepository;
+import com.gudboys.repository.IAlertaRepository;
 import com.gudboys.repository.IFichaMedicaRepository;
 import com.gudboys.repository.IVeterinarioRepository;
 import com.gudboys.service.IAtencionAlarmaService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import com.gudboys.domain.FichaMedica;
+
+import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -21,6 +26,7 @@ public class AtencionAlarmaService implements IAtencionAlarmaService {
     private final IAlarmaRepository alarmaRepository;
     private final IFichaMedicaRepository fichaMedicaRepository;
     private final IVeterinarioRepository veterinarioRepository;
+    private final IAlertaRepository alertaRepository;
     private final AlarmaMapper alarmaMapper;
 
     @Override
@@ -44,14 +50,21 @@ public class AtencionAlarmaService implements IAtencionAlarmaService {
         registro.setAccionesRealizadas(dto.getAccionesRealizadas());
         registro.setComentario(dto.getComentario());
         registro.setTratamientoFinalizado(dto.getTratamientoFinalizado());
-        registro.setDescripcion("Atención de alarma: " + dto.getAccionesRealizadas());
+        // Composite: descripción legible y agregada de las acciones realizadas
+        registro.setDescripcion("Atención de alarma: "
+                + AccionFactory.crearComposite(dto.getAccionesRealizadas()).getDescripcion());
 
         //persiste por cascade
         ficha.agregarEvento(registro);
         
         //Cambio estado de la alarma
         alarma.getEstado().atender(alarma, Boolean.TRUE.equals(dto.getTratamientoFinalizado()));
-        
+
+        // Concilio las alertas pendientes que generó esta alarma (CU-04): quedan atendidas
+        List<Alerta> alertasPendientes = alertaRepository.findByAlarmaIdAndAtendidaFalse(alarma.getId());
+        alertasPendientes.forEach(a -> a.setAtendida(true));
+        alertaRepository.saveAll(alertasPendientes);
+
         // Guardo las entidades que modifiqué
         fichaMedicaRepository.save(ficha);
         alarmaRepository.save(alarma);

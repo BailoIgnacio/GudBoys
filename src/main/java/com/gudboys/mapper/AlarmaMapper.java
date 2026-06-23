@@ -8,6 +8,8 @@ import com.gudboys.dto.request.CrearAlarmaRequestDTO;
 import com.gudboys.dto.response.AlarmaResponseDTO;
 import org.springframework.stereotype.Component;
 
+import java.time.LocalDateTime;
+
 @Component
 public class AlarmaMapper {
 
@@ -18,6 +20,7 @@ public class AlarmaMapper {
         alarma.setAcciones(dto.getAcciones());
         alarma.setEstado(new EstadoActiva());
         alarma.setAnimal(animal);
+        alarma.setFechaProximoDisparo(LocalDateTime.now().plusDays(dto.getPeriodicidad()));
         return alarma;
     }
 
@@ -25,6 +28,7 @@ public class AlarmaMapper {
         alarma.setPeriodicidad(dto.getPeriodicidad());
         alarma.setEsTratamientoMedico(dto.getEsTratamientoMedico());
         alarma.setAcciones(dto.getAcciones());
+        alarma.setFechaProximoDisparo(LocalDateTime.now().plusDays(dto.getPeriodicidad()));
 
         return alarma;
     }

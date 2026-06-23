@@ -2,6 +2,7 @@ package com.gudboys.domain.accion;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * Compuesto del patrón Composite: agrupa varias {@link ComponenteAccion}.
@@ -25,7 +26,9 @@ public class AccionComposite implements ComponenteAccion {
 
     @Override
     public String getDescripcion() {
-        // TODO A.2: agregar las descripciones de los componentes hijos
-        throw new UnsupportedOperationException("TODO A.2: descripción agregada del compuesto");
+        // Composite: pide la descripción a cada hijo (hoja u otro compuesto) y las agrega.
+        return acciones.stream()
+                .map(ComponenteAccion::getDescripcion)
+                .collect(Collectors.joining(", "));
     }
 }
