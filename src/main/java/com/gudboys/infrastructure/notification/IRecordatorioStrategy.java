@@ -4,7 +4,7 @@ import com.gudboys.domain.SeguimientoVisitas;
 
 public interface IRecordatorioStrategy {
 
-    void enviarRecordatorio(SeguimientoVisitas seguimiento);
+    String enviarRecordatorio(SeguimientoVisitas seguimiento);
 
     String getCanal();
 }

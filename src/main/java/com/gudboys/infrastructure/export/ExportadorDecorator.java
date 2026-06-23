@@ -25,7 +25,6 @@ public abstract class ExportadorDecorator implements IExportadorStrategy {
         return exportadorEnvuelto.getFormato();
     }
 
-    /** Las subclases implementan {@link #exportar(FichaMedica)} agregando su comportamiento. */
     @Override
-    public abstract byte[] exportar(FichaMedica fichaMedica);
+    public abstract String exportar(FichaMedica fichaMedica);
 }

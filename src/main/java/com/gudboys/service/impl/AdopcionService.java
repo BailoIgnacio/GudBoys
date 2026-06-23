@@ -34,7 +34,7 @@ public class AdopcionService implements IAdopcionService {
         Animal animal = animalRepository.findById(dto.getAnimalId())
                 .orElseThrow(() -> new RuntimeException("Animal no encontrado con id: " + dto.getAnimalId()));
 
-        // Se chequea que el animal existea y no sea salvaje (esAdoptable) y que no este bajo tratamiento medico
+        // Se chequea que el animal existe y no sea salvaje (esAdoptable) y que no este bajo tratamiento medico
         if(!animal.esAdoptable() || animal.getFichaMedica().estaBajoTratamientoActivo()){
             throw new RuntimeException("El animal no esta disponible para adoptar");
         }

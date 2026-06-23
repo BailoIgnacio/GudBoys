@@ -13,9 +13,8 @@ public class EncriptarDecorator extends ExportadorDecorator {
     }
 
     @Override
-    public byte[] exportar(FichaMedica fichaMedica) {
-        byte[] base = exportadorEnvuelto.exportar(fichaMedica);
-        // TODO B.2: encriptar `base` y devolver el resultado
-        throw new UnsupportedOperationException("TODO B.2: encriptar la exportación");
+    public String exportar(FichaMedica fichaMedica) {
+        String base = exportadorEnvuelto.exportar(fichaMedica);
+        return base + " (encriptado)";
     }
 }
