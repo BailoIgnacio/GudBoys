@@ -1,5 +1,7 @@
 # Functional Spec — Gud Boys (Refugio Animal)
-> Version: 1.2 | Fecha: 2026-06-22 | Estado: Draft
+> Version: 1.3 | Fecha: 2026-06-30 | Estado: Draft
+>
+> **Changelog v1.3:** CU-04 (Disparar alarma) actualizado a ✅ — el disparo automático está implementado (`AlarmaScheduler` + `GestionAlarmaService.dispararAlarmasVencidas()` + Observer). RN-05 actualizado a ✅. Tablas de estado de implementación en [§10](#10-estado-de-implementación) actualizadas.
 >
 > **Changelog v1.2:** Incorporado el diagrama UML actualizado (`PDS-TP.mdj`). CU-02 (Exportar ficha) ahora contempla **encriptado** y **marca de agua** (patrón Decorator); nueva regla **RN-15**. El detalle técnico de los patrones de diseño está en la sección 15 de la spec técnica.
 >
@@ -76,10 +78,10 @@ El sistema interactúa con un módulo externo de autenticación (no gestionado p
 
 ---
 
-### CU-04 — Disparar y Atender Alarma ⚠️
-**Estado:** Parcial.
-- **Atención (pasos 3-8): ✅ Implementado** en `AtencionAlarmaService.atenderAlarma`: valida alarma/veterinario/ficha, crea el `RegistroAtencion` con acciones realizadas y comentario, lo agrega a la ficha médica (cascade) y transiciona el estado de la alarma a `FINALIZADA` (si es tratamiento y finalizó) o `ATENDIDA`. Endpoint `POST /api/alarmas/{id}/atender` activo. *Pendiente menor:* usa `RuntimeException` genérica en lugar de excepciones específicas.
-- **Disparo (pasos 1-2): ❌ Pendiente** — no existe el job/scheduler (`@Scheduled`) que detecte alarmas vencidas, ni se genera la `Alerta`, ni se envía la push notification. El `FirebasePushNotification` (Observer) es un stub que lanza `UnsupportedOperationException` y no se invoca desde ningún service. Depende del patrón **Observer** + scheduler.
+### CU-04 — Disparar y Atender Alarma ✅
+**Estado:** Completamente implementado.
+- **Atención (pasos 3-8): ✅** `AtencionAlarmaService.atenderAlarma`: valida alarma/veterinario/ficha, crea el `RegistroAtencion` con descripción Composite de las acciones, lo agrega a la ficha médica, transiciona el estado vía **State** (`alarma.getEstado().atender(...)`), y marca las alertas pendientes como atendidas. Endpoint `POST /api/alarmas/{id}/atender` activo. *Pendiente menor:* usa `RuntimeException` genérica.
+- **Disparo (pasos 1-2): ✅** `AlarmaScheduler` detecta alarmas vencidas por `fechaProximoDisparo` y llama `GestionAlarmaService.dispararAlarmasVencidas()`, que genera la `Alerta`, suscribe veterinarios + canal push vía **Observer** y llama `alerta.alertarVeterinarios()`. `FirebasePushNotification` loguea la notificación (simulado).
 **Actor:** Sistema (disparo automático), Veterinario (atención)  
 **Descripción:** Al llegar el momento de una alarma, el sistema genera una alerta para todos los veterinarios.
 
@@ -178,9 +180,9 @@ Cada alarma tiene una periodicidad (en días) y un conjunto de acciones a ejecut
 *Cumplida:* `Alarma` tiene `periodicidad` (int días) y `List<AccionAlarma>` (`@ElementCollection`); el enum `AccionAlarma` define las 5 acciones. `GestionAlarmaService` las persiste vía `AlarmaMapper`.  
 *Referenciado por: CU-03, CU-04*
 
-### RN-05 — Notificación a Veterinarios ❌
+### RN-05 — Notificación a Veterinarios ✅
 Cuando se dispara una alarma, se envía una push notification a **todos** los veterinarios del sistema.  
-*Pendiente:* el contrato `INotificadorPush` está definido y `FirebasePushNotification` lo implementa como stub, pero no se invoca desde ningún flujo (no existe el disparo de alarmas). Depende del patrón **Observer**.  
+*Cumplida:* `GestionAlarmaService.generarAlerta()` suscribe a todos los veterinarios y a `FirebasePushNotification` como observadores de la `Alerta`. `alerta.alertarVeterinarios()` notifica a cada uno. La notificación push es simulada por log (suficiente para el TP).  
 *Referenciado por: CU-04*
 
 ### RN-06 — Registro de Atención ✅
@@ -322,16 +324,16 @@ sequenceDiagram
 ---
 
 ## 10. Estado de Implementación
-> Verificado contra el código al 2026-06-22. Leyenda: ✅ Implementado · ⚠️ Parcial · ❌ Pendiente.
+> Verificado contra el código al 2026-06-30. Leyenda: ✅ Implementado · ⚠️ Parcial · ❌ Pendiente.
 
 ### Casos de Uso
 
 | CU | Caso de uso | Estado | Falta |
 |----|-------------|--------|-------|
 | CU-01 | Ingresar animal | ✅ | — |
-| CU-02 | Exportar ficha médica | ❌ | Strategy de exportación + endpoint + deps PDF/Excel |
+| CU-02 | Exportar ficha médica | ❌ | Strategy + Decorator + Factory + endpoint + deps PDF/Excel |
 | CU-03 | Crear/actualizar alarma | ✅ | — |
-| CU-04 | Disparar y atender alarma | ⚠️ | Disparo automático: Observer + scheduler + generación de `Alerta` |
+| CU-04 | Disparar y atender alarma | ✅ | — |
 | CU-05 | Registrar adopción | ✅ | — |
 | CU-06 | Configurar seguimiento | ✅ | — |
 | CU-07 | Registrar visita | ✅ | — |
@@ -345,9 +347,9 @@ sequenceDiagram
 | RN-02 Ficha técnica obligatoria | ✅ | RN-09 Límite 2 adopciones | ✅ |
 | RN-03 Escalabilidad exportación | ❌ | RN-10 Datos del adoptante | ✅ |
 | RN-04 Alarma con acciones | ✅ | RN-11 Asignación de visitador | ✅ |
-| RN-05 Notificación a veterinarios | ❌ | RN-12 Recordatorio configurable | ⚠️ |
+| RN-05 Notificación a veterinarios | ✅ | RN-12 Recordatorio configurable | ⚠️ |
 | RN-06 Registro de atención | ✅ | RN-13 Encuesta de visita | ✅ |
 | RN-07 Tratamiento bloquea adopción | ✅ | RN-14 Historial unificado | ✅ |
 | | | RN-15 Encriptado / marca de agua | ❌ |
 
-**Resumen:** 6 de 8 casos de uso completos (CU-04 parcial). 11 de 15 reglas cumplidas (RN-12 parcial; RN-03, RN-05, RN-15 pendientes). Lo pendiente (CU-02, CU-08, RN-03, RN-05, RN-15 y el disparo de CU-04) se concentra en los **patrones de diseño** y el **scheduler** automático. El diagrama actualizado (`PDS-TP.mdj`) define el diseño objetivo de esos patrones — **State** (alarma), **Composite** (acciones), **Strategy+Decorator+Factory** (exportación), **Factory** (recordatorios) y **Observer** (notificaciones) — detallado en la sección 15 de la spec técnica. Ver también §12 y §14 (plan de cierre).
+**Resumen:** 7 de 8 casos de uso completos. 12 de 15 reglas cumplidas (RN-12 parcial; RN-03, RN-15 pendientes). Lo pendiente (CU-02, CU-08, RN-03, RN-15) se concentra en los **patrones de exportación y recordatorios**. Ver §12 y §14 de la spec técnica.

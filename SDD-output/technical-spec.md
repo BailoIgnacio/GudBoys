@@ -1,5 +1,7 @@
 # Technical Spec — Gud Boys (Refugio Animal)
-> Version: 1.4 | Fecha: 2026-06-22 | Estado: Draft
+> Version: 1.5 | Fecha: 2026-06-30 | Estado: Draft
+>
+> **Changelog v1.5:** Tres bloques de cambios. (1) **Relación Animal↔FichaMedica simplificada** — eliminada la bidireccional `@OneToOne(mappedBy)` de `Animal`; la relación queda unidireccional (`FichaMedica → Animal`). `AnimalMapper`, `SeguimientoMapper` y `AdopcionService` ahora usan `fichaMedicaRepository.findByAnimalId()` en vez de `animal.getFichaMedica()`. Nueva decisión técnica [TD-07](#td-07--relación-unidireccional-fichamedica--animal). (2) **Patrones State, Composite y Observer implementados** — `Alarma.estado` migrado a `IEstadoAlarma` con `EstadoAlarmaConverter`; `AccionFactory` reconstruye el árbol Composite en memoria desde el enum persistido; `Alerta` implementa `IObservado`, `FirebasePushNotification` implementa `INotificadorPushObservador` (log simulado), `GestionAlarmaService.generarAlerta()` orquesta el flujo Observer completo; `INotificadorPush` eliminado. (3) **Scheduler de alarmas implementado** — `AlarmaScheduler` con `@Scheduled` + `GestionAlarmaService.dispararAlarmasVencidas()` + nuevo campo `fechaProximoDisparo` en `Alarma`. Se actualizan [§12](#12-gaps-detectados-todo), [§14](#14-trabajo-restante-para-cerrar-el-proyecto) y [§15](#15-patrones-de-diseño--diseño-objetivo-pds-tpmdj).
 >
 > **Changelog v1.4:** Incorporado el diseño objetivo del diagrama UML actualizado (`PDS-TP.mdj`). Se documentan los **patrones de diseño** que define el diagrama en la nueva sección [15](#15-patrones-de-diseño--diseño-objetivo-pds-tpmdj): **State** (`IEstadoAlarma`), **Composite** (`ComponenteAccion`), **Strategy + Decorator + Factory** para exportación (con encriptado y marca de agua), **Factory** para recordatorios, **Observer** (`IObservado`/`IObservador`) y **Adapter**. [TD-02](#td-02--accionalarma-como-enum--elementcollection) queda **superado** (el diagrama vuelve a Composite). [TD-04](#td-04--patrones-de-diseño-a-implementar-todo-por-el-equipo) y [§14](#14-trabajo-restante-para-cerrar-el-proyecto) ahora apuntan al diseño concreto. Se marca cada **divergencia entre el código actual y el diagrama objetivo**.
 >
@@ -68,7 +70,7 @@ com.gudboys/
 | condicion_medica | BOOLEAN | true = necesita atención médica |
 | dtype | VARCHAR | Discriminador JPA (JOINED inheritance) |
 
-**Relaciones:** `FichaMedica` (1:1), `Alarma` (1:N)
+**Relaciones:** `Alarma` (1:N). La relación con `FichaMedica` es **unidireccional** desde `FichaMedica` hacia `Animal` — `Animal` no tiene referencia a `FichaMedica`. Ver [TD-07](#td-07--relación-unidireccional-fichamedica--animal).
 
 ### AnimalDomestico (tabla: `animales_domesticos`)
 | Campo | Tipo |
@@ -115,10 +117,11 @@ com.gudboys/
 | id | BIGINT PK | |
 | periodicidad | INT | En días |
 | es_tratamiento_medico | BOOLEAN | |
-| estado | ENUM(ACTIVA,ATENDIDA,FINALIZADA) | **Código actual.** El diagrama objetivo lo modela como **State** (`IEstadoAlarma`: `EstadoActiva`/`EstadoAtendida`/`EstadoFinalizada`); ver [§15.1](#151-state--estado-de-la-alarma). Persistencia: se conserva una columna discriminadora del estado y se reconstruye el objeto State al cargar. |
+| estado | VARCHAR | Persistido como `"ACTIVA"/"ATENDIDA"/"FINALIZADA"` vía `EstadoAlarmaConverter`; en memoria es `IEstadoAlarma` (patrón State). Ver [§15.1](#151-state--estado-de-la-alarma). |
 | animal_id | BIGINT FK | → animales.id |
+| fecha_proximo_disparo | DATETIME | Calculada al crear/reprogramar. El scheduler la compara contra `now()` para detectar alarmas vencidas. |
 
-**Relaciones:** `AccionAlarma[]` (ElementCollection en tabla `alarma_acciones`) — **código actual**. El diagrama objetivo usa **Composite** (`ComponenteAccion`); ver [§15.2](#152-composite--acciones-de-la-alarma).
+**Relaciones:** `AccionAlarma[]` (ElementCollection en tabla `alarma_acciones`) como discriminador de persistencia. En memoria se reconstruye el árbol Composite vía `AccionFactory.crearComposite()`; ver [§15.2](#152-composite--acciones-de-la-alarma).
 
 ### Alerta (tabla: `alertas`)
 | Campo | Tipo |
@@ -269,11 +272,11 @@ gudboys.firebase.server-key=${FIREBASE_SERVER_KEY}
 - **Trade-off:** Más queries con JOINs vs. claridad del modelo y ausencia de columnas nulas. Para este volumen de datos, el overhead es negligible.
 - **Status:** Confirmado.
 
-### TD-02 — AccionAlarma como Enum + ElementCollection  ⚠️ SUPERADO por el diagrama (v1.4)
-- **Contexto:** El diseño original propone Composite para las acciones de alarma.
-- **Decisión (original):** Modelar `AccionAlarma` como `enum` con una tabla de colección (`@ElementCollection`). Un `List<AccionAlarma>` en Alarma y en RegistroAtencion es suficiente para los requerimientos.
-- **Trade-off:** Menos flexibilidad que Composite, pero mucho más simple. Si se necesitan acciones con comportamiento propio (no solo datos), refactorizar a Strategy/Composite.
-- **Status:** **Superado.** El diagrama actualizado (`PDS-TP.mdj`) vuelve al patrón **Composite** (`ComponenteAccion` + `AccionComposite` + hojas por acción). Ver [§15.2](#152-composite--acciones-de-la-alarma). El **código actual todavía usa el enum** `AccionAlarma`: migrar a Composite es trabajo pendiente.
+### TD-02 — AccionAlarma: Enum como persistencia + Composite en memoria (v1.5)
+- **Contexto:** El diseño original usaba el enum como única representación. El diagrama objetivo pide Composite.
+- **Decisión (v1.5):** Enfoque híbrido — el **enum `AccionAlarma` + `@ElementCollection`** se mantiene como discriminador de persistencia (simple, sin migrations); `AccionFactory.crearComposite(List<AccionAlarma>)` reconstruye el árbol de `ComponenteAccion` en memoria. `Alarma.getAccionesComposite()` (campo `@Transient`) expone el árbol. `AtencionAlarmaService` usa `AccionFactory.crearComposite(dto.getAccionesRealizadas()).getDescripcion()` para generar la descripción del `RegistroAtencion`.
+- **Trade-off:** Evita migrar la tabla `alarma_acciones` y mantiene la simplicidad de persistencia, a costa de que el Composite no es la fuente de verdad en BD. Si se necesitara persistir el árbol completo (acciones compuestas anidadas), habría que migrar a herencia JPA para `ComponenteAccion`.
+- **Status:** Implementado — `AccionFactory` y `AccionComposite` en uso.
 
 ### TD-03 — Referencia a Usuario externo por externalId
 - **Contexto:** El módulo de autenticación gestiona usuarios. Nuestro sistema no puede crear ni modificar credenciales.
@@ -302,6 +305,12 @@ gudboys.firebase.server-key=${FIREBASE_SERVER_KEY}
 - **Decisión:** Se agregó `AlarmaMapper.actualizarEntity(CrearAlarmaRequestDTO dto, Alarma alarma)`, que muta in-place `periodicidad`, `esTratamientoMedico` y `acciones` sobre la instancia recibida (managed por JPA) y la retorna. No toca `id`, `animal` ni `estado` — esos campos no se actualizan por este flujo.
 - **Trade-off:** Mantiene `save()` haciendo `UPDATE` sobre la misma fila/PK en vez de duplicar registros. Como contrapartida, si en el futuro se necesita reasignar el animal o forzar un cambio de estado vía esta misma operación, hay que extender el método o agregar uno nuevo — hoy `actualizarEntity` ignora esos campos deliberadamente.
 - **Status:** Confirmado — implementado y en uso por `GestionAlarmaService.actualizarAlarma`.
+
+### TD-07 — Relación unidireccional FichaMedica → Animal (v1.5)
+- **Contexto:** `Animal` tenía `@OneToOne(mappedBy = "animal") FichaMedica fichaMedica`, lo que generaba una bidireccional. Algunos lugares usaban `animal.getFichaMedica()` y otros `fichaMedicaRepository.findByAnimalId()`, sin criterio claro — código inconsistente y acoplamiento innecesario.
+- **Decisión:** Eliminar el campo `fichaMedica` de `Animal`. La relación queda unidireccional: solo `FichaMedica` tiene `@JoinColumn(name="animal_id")`. Para obtener la ficha de un animal siempre se usa `fichaMedicaRepository.findByAnimalId(id)`.
+- **Trade-off:** Reduce acoplamiento entre entidades y hace el código predecible (una sola forma de obtener la ficha). La BD no cambia (la FK `animal_id` en `fichas_medicas` ya existía y es la única FK). `AnimalMapper`, `SeguimientoMapper` y `AdopcionService` fueron actualizados para ir por el repositorio.
+- **Status:** Implementado.
 
 ### TD-05 — VisitaDomicilio como Evento (RN-14)
 - **Contexto:** RN-14 exige que el historial de la ficha médica unifique **registros de atención veterinaria y visitas domiciliarias**. En el modelo inicial, `VisitaDomicilio` era una entidad independiente colgada solo de `SeguimientoVisitas`, sin relación con `FichaMedica`. Era imposible que una visita apareciera en el historial: `FichaMedica.eventos` es `List<Evento>` y `VisitaDomicilio` no era un `Evento`. Esto contradecía tanto RN-14 como la intención ya expresada en [TD-01](#td-01--herencia-jpa-con-joined-strategy) ("VisitaDomicilio como evento").
@@ -338,17 +347,15 @@ gudboys.firebase.server-key=${FIREBASE_SERVER_KEY}
 
 ## 12. Gaps Detectados [TODO]
 
-**Estado de los Services (verificado en código, 2026-06-22):**
+**Estado de los Services (verificado en código, 2026-06-30):**
 
 | Service | Estado |
 |---------|--------|
 | `IngresoAnimalService` | ✅ Completo — `ingresarAnimal`, `obtenerAnimal`, `listarAnimales`, `obtenerFichaMedica`. Usa excepciones específicas (`AnimalException`, `AnimalNotFoundException`) |
-| `GestionAlarmaService` | ✅ Completo — `crearAlarma`, `actualizarAlarma` (`@Transactional`), `listarAlarmasPorAnimal` |
-| `AtencionAlarmaService` | ✅ Completo (atención) — crea `RegistroAtencion`, transiciona estado. *Pendiente menor:* excepciones genéricas (`RuntimeException`) y no dispara el Observer |
-| `AdopcionService` | ✅ Completo — valida RN-07/08/09. *Pendiente menor:* excepciones genéricas |
-| `VisitaSeguimientoService` | ⚠️ Casi completo — `configurarSeguimiento`, `obtenerSeguimiento`, `registrarVisita` y `listarVisitas` listos. Falta solo `enviarRecordatoriosProximos` (CU-08), que lanza `UnsupportedOperationException` y depende de `IRecordatorioStrategy` |
-
-**Conclusión:** la capa de servicios (lógica de negocio) está prácticamente terminada. Lo pendiente NO es lógica de negocio sino **infraestructura de patrones + scheduler**.
+| `GestionAlarmaService` | ✅ Completo — `crearAlarma`, `actualizarAlarma`, `listarAlarmasPorAnimal`, `generarAlerta` (Observer), `dispararAlarmasVencidas` (Scheduler) |
+| `AtencionAlarmaService` | ✅ Completo — crea `RegistroAtencion` con descripción Composite, transiciona estado vía State, marca alertas pendientes como atendidas. *Pendiente menor:* excepciones genéricas (`RuntimeException`) |
+| `AdopcionService` | ✅ Completo — valida RN-07/08/09 vía repositorio. *Pendiente menor:* excepciones genéricas |
+| `VisitaSeguimientoService` | ⚠️ Casi completo — `configurarSeguimiento`, `obtenerSeguimiento`, `registrarVisita` y `listarVisitas` listos. Falta solo `enviarRecordatoriosProximos` (CU-08), depende de `IRecordatorioStrategy` |
 
 **Estado de la Infraestructura:**
 
@@ -356,21 +363,19 @@ gudboys.firebase.server-key=${FIREBASE_SERVER_KEY}
 |------------|--------|
 | `ExportadorPDF` / `ExportadorExcel` (`IExportadorStrategy`) | ❌ Stub (`UnsupportedOperationException`), sin deps en `pom.xml` |
 | `SmsSender` / `WhatsAppSender` / `EmailSender` (`IRecordatorioStrategy`) | ❌ Stub |
-| `FirebasePushNotification` (`INotificadorPush`, Observer) | ❌ Stub, nunca invocado |
+| `FirebasePushNotification` (`INotificadorPushObservador`, Observer) | ✅ Implementado — log simulado. Invocado desde `GestionAlarmaService.generarAlerta()` |
 | `AuthServiceAdapter` | ❌ Stub |
-| Scheduler `@Scheduled` (disparo alarmas + recordatorios) | ❌ No existe (`@EnableScheduling` tampoco) |
+| `AlarmaScheduler` (`@Scheduled`, disparo de alarmas) | ✅ Implementado — `dispararAlarmasVencidas()` cada `gudboys.scheduler.alarmas.fixed-delay` ms (default 1h) |
+| Scheduler recordatorios (`enviarRecordatoriosProximos`) | ❌ No existe |
 | `GlobalExceptionHandler` (`@RestControllerAdvice`) | ⚠️ Existe, pero solo maneja `AnimalNotFoundException`; faltan `AnimalException` y un handler genérico |
 | Tests (`src/test`) | ❌ Carpeta inexistente, cero tests |
 | Seguridad / JWT | ❌ No existe |
 | Flyway / Liquibase | ❌ No existe [ASSUMPTION: no requerido por el TP] |
 
 **Pendientes priorizados:**
-- [TODO] **(Patrón Strategy)** Implementar `ExportadorPDF`/`ExportadorExcel` + deps PDF/Excel + endpoint de exportación → cierra CU-02/RN-03
-- [TODO] **(Patrón Strategy)** Implementar los 3 senders + `enviarRecordatoriosProximos` → cierra CU-08/RN-12
-- [TODO] **(Patrón Observer)** Implementar `FirebasePushNotification` + generación de `Alerta` + invocación al disparar → cierra RN-05 y el disparo de CU-04
-- [TODO] **(Patrón State)** Encapsular las transiciones de `EstadoAlarma` → pedido por el TP
-- [TODO] **(Scheduler)** `@EnableScheduling` + jobs `@Scheduled` para disparar alarmas vencidas y recordatorios próximos
-- [TODO] Ampliar `GlobalExceptionHandler` (manejar `AnimalException` y un handler genérico; reemplazar `RuntimeException` por excepciones de dominio en los services restantes)
+- [TODO] **(Patrón Strategy + Decorator + Factory)** Implementar `ExportadorPDF`/`ExportadorExcel` + deps PDF/Excel + endpoint de exportación → cierra CU-02/RN-03/RN-15
+- [TODO] **(Patrón Strategy + Factory)** Implementar los 3 senders + `RecordatorioFactory` + `enviarRecordatoriosProximos` + scheduler de recordatorios → cierra CU-08/RN-12
+- [TODO] Ampliar `GlobalExceptionHandler` (manejar `AnimalException` y un handler genérico; reemplazar `RuntimeException` por excepciones de dominio)
 - [TODO] Implementar `AuthServiceAdapter` para obtener datos de usuarios externos
 - [TODO] Tests unitarios/integración (JUnit 5 + Mockito + H2)
 - [TODO] Seguridad con JWT si el módulo externo lo usa
@@ -389,46 +394,47 @@ gudboys.firebase.server-key=${FIREBASE_SERVER_KEY}
 
 ## 14. Trabajo Restante para Cerrar el Proyecto
 
-La lógica de negocio está esencialmente completa. **Lo que falta para terminar el TP es, casi en su totalidad, la implementación de los patrones de diseño** (que el enunciado exige) más el scheduler que los dispara. Orden sugerido:
+La lógica de negocio y los principales patrones de diseño están implementados. **Lo que queda son los patrones de exportación y recordatorios**, más hardening. Orden sugerido:
 
-### Bloque 1 — Patrones de diseño (núcleo del trabajo restante)
-
-> El diseño objetivo de cada patrón (clases participantes) está en la sección [15](#15-patrones-de-diseño--diseño-objetivo-pds-tpmdj).
+### Bloque 1 — Patrones pendientes
 
 1. **Strategy + Decorator + Factory — Exportación de ficha médica** *(CU-02, RN-03, RN-15)*
    - Agregar dependencias al `pom.xml`: iText o Apache PDFBox (PDF) y Apache POI (Excel).
-   - Implementar `ExportadorPDF.exportarFicha()` y `ExportadorExcel.exportarFicha()` (Strategy).
-   - Crear `ExportadorDecorator` + `EncriptarDecorator` + `MarcaAguaDecorator` (Decorator) para encriptado y marca de agua.
+   - Implementar `ExportadorPDF.exportar()` y `ExportadorExcel.exportar()` (Strategy).
+   - Crear `ExportadorDecorator` + `EncriptarDecorator` + `MarcaAguaDecorator` (Decorator).
    - Crear `ExportadorFactory.crearExportador(formato, encriptar, agua)` que arma strategy + decoradores.
    - Exponer `GET /api/animales/{id}/ficha-medica/exportar?formato=PDF|EXCEL&encriptar=&agua=` en `AnimalController`.
 
 2. **Strategy + Factory — Recordatorios de visita** *(CU-08, RN-12)*
-   - Implementar `SMSSender`/`WhatsAppSender`/`EmailSender.enviarRecordatorio(diasAntes)`.
+   - Implementar `SmsSender`/`WhatsAppSender`/`EmailSender.enviarRecordatorio()`.
    - Crear `RecordatorioFactory` que selecciona la estrategia según `PreferenciaRecordatorio`.
-   - Completar `VisitaSeguimientoService.enviarRecordatoriosProximos()`: buscar visitas dentro de los próximos `N` días (`gudboys.recordatorio.dias-anticipacion`) y enviar por el canal preferido.
+   - Completar `VisitaSeguimientoService.enviarRecordatoriosProximos()`.
+   - Agregar un segundo `@Scheduled` en un nuevo `RecordatorioScheduler` que llame a `enviarRecordatoriosProximos()`.
 
-3. **Observer — Notificación a veterinarios** *(CU-04 disparo, RN-05)*
-   - Crear `IObservado`/`IObservador`/`INotificadorPushObservador` e implementar `FirebasePushNotification`.
-   - Al disparar una alarma: `GestionAlarmaService.generarAlerta()` crea la `Alerta` y `Alerta.alertarVeterinarios()` notifica a todos los veterinarios suscriptos.
+### Bloque 2 — Robustez (recomendado)
 
-4. **State — Ciclo de vida de la alarma** *(pedido por el TP)*
-   - Crear `IEstadoAlarma` + `EstadoActiva`/`EstadoAtendida`/`EstadoFinalizada`; cambiar `Alarma.estado` a `IEstadoAlarma`, reemplazando el `if/else` actual de `AtencionAlarmaService` y el enum.
+3. Ampliar `GlobalExceptionHandler` (manejar `AnimalException` + handler genérico) y migrar los `RuntimeException` a excepciones de dominio.
+4. `AuthServiceAdapter` real (si el módulo externo lo requiere).
+5. Tests (JUnit 5 + Mockito + H2): ciclo de vida de alarma, validaciones de adopción (salvaje, bajo tratamiento, límite 2).
+6. Seguridad JWT (si aplica al alcance).
 
-5. **Composite — Acciones de la alarma** *(pedido por el TP)*
-   - Crear `ComponenteAccion` + `AccionComposite` + las 5 hojas de acción, reemplazando el enum `AccionAlarma` + `@ElementCollection` (ver [TD-02](#td-02--accionalarma-como-enum--elementcollection-️-superado-por-el-diagrama-v14)).
+### Estado de avance de patrones
 
-### Bloque 2 — Scheduler
+| Patrón | Estado |
+|--------|--------|
+| State (alarma) | ✅ Implementado |
+| Composite (acciones) | ✅ Implementado (híbrido: enum persiste, Factory reconstruye en memoria) |
+| Observer (notificaciones) | ✅ Implementado (Firebase simulado por log) |
+| Scheduler (disparo alarmas) | ✅ Implementado |
+| Strategy (exportación) | ❌ Pendiente |
+| Decorator (exportación) | ❌ Pendiente |
+| Factory (exportación) | ❌ Pendiente |
+| Strategy (recordatorios) | ❌ Pendiente |
+| Factory (recordatorios) | ❌ Pendiente |
+| Scheduler (recordatorios) | ❌ Pendiente |
+| Adapter (auth) | ❌ Stub |
 
-6. **Disparo automático** — `@EnableScheduling` + un job `@Scheduled` que detecte alarmas vencidas según `periodicidad` y dispare el Observer (item 3), y otro que invoque `enviarRecordatoriosProximos()` (item 2).
-
-### Bloque 3 — Robustez (no exigido por patrones, recomendado)
-
-7. Ampliar `GlobalExceptionHandler` (manejar `AnimalException` + handler genérico) y migrar los `RuntimeException` de los services a excepciones de dominio.
-8. `AuthServiceAdapter` real (si el módulo externo lo requiere).
-9. Tests (JUnit 5 + Mockito + H2): ciclo de vida de alarma, validaciones de adopción (salvaje, bajo tratamiento, límite 2).
-10. Seguridad JWT (si aplica al alcance).
-
-**En síntesis:** el proyecto está funcionalmente avanzado; el cierre pasa por los **patrones de diseño + scheduler** (Bloques 1 y 2). El Bloque 3 es hardening opcional según el alcance que pida la cátedra. El diseño objetivo de cada patrón está detallado en la sección [15](#15-patrones-de-diseño--diseño-objetivo-pds-tpmdj).
+**En síntesis:** el proyecto está funcionalmente muy avanzado — todos los patrones estructurales y de comportamiento pedidos para el dominio (State, Composite, Observer) están implementados. Lo que falta son los patrones de infraestructura (exportación y recordatorios).
 
 ---
 
@@ -436,15 +442,16 @@ La lógica de negocio está esencialmente completa. **Lo que falta para terminar
 > Esta sección refleja el **diagrama UML actualizado** (`SDD-output/PDS-TP.mdj`). Es el **diseño objetivo**: en varios casos el código actual todavía usa una versión más simple — cada divergencia se marca con ⚠️. Se omiten elementos de scratch del diagrama (`Class1-4`, `Interface1-5`, `IAlarma` duplicado, etc.).
 
 ### 15.1 State — Estado de la Alarma
-- **Participantes:** interfaz `IEstadoAlarma`; estados concretos `EstadoActiva`, `EstadoAtendida`, `EstadoFinalizada` (cada uno `..|> IEstadoAlarma`). `Alarma` pasa a tener `estado: IEstadoAlarma` (dependencia `Alarma ..> IEstadoAlarma`).
-- **Intención:** cada estado encapsula la transición válida y el comportamiento (p. ej. si bloquea la adopción). `Alarma.atender(...)` delega en el estado actual, que decide el próximo estado.
-- **Persistencia:** mantener una columna discriminadora (`ACTIVA/ATENDIDA/FINALIZADA`) en `alarmas` y reconstruir la instancia de estado al cargar (factory simple o `@PostLoad`).
-- ⚠️ **Divergencia:** el código usa el enum `EstadoAlarma`; la transición vive en `AtencionAlarmaService` con `if/else`. Migrar a las clases de estado.
+- **Participantes:** interfaz `IEstadoAlarma`; estados concretos `EstadoActiva`, `EstadoAtendida`, `EstadoFinalizada`. `Alarma.estado` es de tipo `IEstadoAlarma`.
+- **Intención:** cada estado encapsula su transición válida (`atender()`) y si bloquea la adopción (`bloqueaAdopcion()`). `AtencionAlarmaService` llama `alarma.getEstado().atender(alarma, tratamientoFinalizado)` y el estado actual decide el siguiente.
+- **Persistencia:** `EstadoAlarmaConverter` (`@Converter`) serializa a `"ACTIVA"/"ATENDIDA"/"FINALIZADA"` en BD y reconstruye la instancia de estado al cargar.
+- ✅ **Implementado.**
 
 ### 15.2 Composite — Acciones de la alarma
-- **Participantes:** componente `ComponenteAccion` (operación común); compuesto `AccionComposite` (`acciones: List<ComponenteAccion>`); hojas `ControlParasitosAccion`, `ColocarAntiparasitarios`, `ComprobarPesoTamanio`, `ChequearNutricion`, `ColocarVacuna` (todas `..|> ComponenteAccion`).
-- **Intención:** tratar acciones individuales y grupos de acciones de forma uniforme; permite componer una alarma con un árbol de acciones.
-- ⚠️ **Divergencia:** el código usa el enum `AccionAlarma` + `@ElementCollection` (ver [TD-02](#td-02--accionalarma-como-enum--elementcollection-️-superado-por-el-diagrama-v14), superado). Migrar a Composite.
+- **Participantes:** componente `ComponenteAccion`; compuesto `AccionComposite`; hojas `ControlParasitosAccion`, `ColocarAntiparasitarios`, `ComprobarPesoTamanio`, `ChequearNutricion`, `ColocarVacuna`. `AccionFactory` traduce enum → árbol.
+- **Intención:** tratar acciones individuales y compuestas de forma uniforme. `getDescripcion()` recorre el árbol para generar la descripción del `RegistroAtencion`.
+- **Persistencia:** el enum `AccionAlarma` + `@ElementCollection` sigue siendo la fuente de verdad en BD; el árbol Composite se reconstruye en memoria vía `AccionFactory.crearComposite()`. Ver [TD-02](#td-02--accionalarma-enum-como-persistencia--composite-en-memoria-v15).
+- ✅ **Implementado** (enfoque híbrido).
 
 ### 15.3 Exportación: Strategy + Decorator + Factory
 - **Strategy:** `IExportadorStrategy` (`exportarFicha(...)`) con `ExportadorPDF` y `ExportadorExcel` (`..|> IExportadorStrategy`). `FichaMedica` se asocia a `IExportadorStrategy`.
@@ -459,21 +466,21 @@ La lógica de negocio está esencialmente completa. **Lo que falta para terminar
 - ⚠️ **Divergencia:** los senders son stubs; el factory **no existe** en el código.
 
 ### 15.5 Observer — Notificación de alarmas a veterinarios
-- **Participantes:** sujeto `IObservado` y observador `IObservador`. `INotificadorPushObservador` extiende `IObservador` y realiza `IObservado`/`IObservador`. `Alarma`/`Alerta` actúan como observados (`..|> IObservado` / `..|> INotificadorPushObservador`); `Veterinario` es observador (`..|> IObservador`); `FirebasePushNotification ..|> INotificadorPushObservador`.
-- **Flujo:** `GestionAlarmaService.generarAlerta()` crea la `Alerta`; `Alerta.alertarVeterinarios()` notifica a todos los veterinarios suscriptos vía el notificador push.
-- ⚠️ **Divergencia:** existe solo `FirebasePushNotification` como stub (`INotificadorPush`); faltan `IObservado`/`IObservador`/`INotificadorPushObservador`, la generación de `Alerta` y el disparo.
+- **Participantes:** `IObservado` (sujeto), `IObservador` (observador), `INotificadorPushObservador` (extiende `IObservador`). `Alerta` implementa `IObservado`. `Veterinario` implementa `IObservador`. `FirebasePushNotification` implementa `INotificadorPushObservador`.
+- **Flujo:** `GestionAlarmaService.generarAlerta()` persiste la `Alerta`, suscribe todos los veterinarios + el canal push, y llama `alerta.alertarVeterinarios()` que itera los observadores y llama `actualizar(alerta)` en cada uno. `FirebasePushNotification` loguea la notificación (simulado).
+- ✅ **Implementado.** (`INotificadorPush` eliminado — reemplazado por `INotificadorPushObservador`).
 
 ### 15.6 Adapter — Autenticación
 - `AuthServiceAdapter` (Infraestructura) adapta el módulo externo de autenticación. Ya documentado en [TD-03](#td-03--referencia-a-usuario-externo-por-externalid); sigue como stub en el código.
 
 ### Resumen de patrones
 
-| Patrón | Aplicado a | Clases clave (diagrama) | Estado en código |
-|--------|-----------|--------------------------|------------------|
-| State | Estado de alarma | `IEstadoAlarma`, `EstadoActiva/Atendida/Finalizada` | ⚠️ enum plano |
-| Composite | Acciones de alarma | `ComponenteAccion`, `AccionComposite`, hojas | ⚠️ enum + ElementCollection |
-| Strategy | Exportación / Recordatorios | `IExportadorStrategy`, `IRecordatorioStrategy` | ❌ stubs |
-| Decorator | Exportación (encriptar, marca de agua) | `ExportadorDecorator`, `EncriptarDecorator`, `MarcaAguaDecorator` | ❌ no existe |
-| Factory | Exportación / Recordatorios | `ExportadorFactory`, `RecordatorioFactory` | ❌ no existe |
-| Observer | Alerta → veterinarios | `IObservado`, `IObservador`, `INotificadorPushObservador` | ❌ stub parcial |
-| Adapter | Auth externo | `AuthServiceAdapter` | ❌ stub |
+| Patrón | Aplicado a | Clases clave | Estado en código |
+|--------|-----------|--------------|-----------------|
+| State | Estado de alarma | `IEstadoAlarma`, `EstadoActiva/Atendida/Finalizada`, `EstadoAlarmaConverter` | ✅ Implementado |
+| Composite | Acciones de alarma | `ComponenteAccion`, `AccionComposite`, hojas, `AccionFactory` | ✅ Implementado (híbrido) |
+| Observer | Alerta → veterinarios | `IObservado`, `IObservador`, `INotificadorPushObservador`, `FirebasePushNotification` | ✅ Implementado (log simulado) |
+| Strategy | Exportación / Recordatorios | `IExportadorStrategy`, `IRecordatorioStrategy` | ❌ Stubs |
+| Decorator | Exportación | `ExportadorDecorator`, `EncriptarDecorator`, `MarcaAguaDecorator` | ❌ No existe |
+| Factory | Exportación / Recordatorios | `ExportadorFactory`, `RecordatorioFactory` | ❌ No existe |
+| Adapter | Auth externo | `AuthServiceAdapter` | ❌ Stub |

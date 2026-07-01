@@ -2,6 +2,7 @@ package com.gudboys.mapper;
 
 import com.gudboys.domain.Adopcion;
 import com.gudboys.domain.EncuestaSeguimiento;
+import com.gudboys.domain.FichaMedica;
 import com.gudboys.domain.SeguimientoVisitas;
 import com.gudboys.domain.VisitaDomicilio;
 import com.gudboys.domain.Visitador;
@@ -9,10 +10,15 @@ import com.gudboys.dto.request.ConfigurarSeguimientoRequestDTO;
 import com.gudboys.dto.request.RegistrarVisitaRequestDTO;
 import com.gudboys.dto.response.SeguimientoResponseDTO;
 import com.gudboys.dto.response.VisitaResponseDTO;
+import com.gudboys.repository.IFichaMedicaRepository;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 @Component
+@RequiredArgsConstructor
 public class SeguimientoMapper {
+
+    private final IFichaMedicaRepository fichaMedicaRepository;
 
     public SeguimientoVisitas toEntity(ConfigurarSeguimientoRequestDTO dto, Adopcion adopcion, Visitador visitador) {
         SeguimientoVisitas seguimiento = new SeguimientoVisitas();
@@ -33,7 +39,9 @@ public class SeguimientoMapper {
         // Campos heredados de Evento (RN-14): la visita queda enlazada a la ficha medica
         // del animal adoptado, apareciendo en su historial unificado.
         visita.setDescripcion("Visita domiciliaria");
-        visita.setFichaMedica(seguimiento.getAdopcion().getAnimal().getFichaMedica());
+        FichaMedica fichaMedica = fichaMedicaRepository.findByAnimalId(seguimiento.getAdopcion().getAnimal().getId())
+                .orElseThrow(() -> new RuntimeException("Ficha médica no encontrada para el animal"));
+        visita.setFichaMedica(fichaMedica);
 
         EncuestaSeguimiento encuesta = new EncuestaSeguimiento();
         encuesta.setVisitaDomicilio(visita);

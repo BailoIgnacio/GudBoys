@@ -4,12 +4,14 @@ import com.gudboys.domain.Adopcion;
 import com.gudboys.domain.Adoptante;
 import com.gudboys.domain.Animal;
 import com.gudboys.domain.AnimalDomestico;
+import com.gudboys.domain.FichaMedica;
 import com.gudboys.dto.request.RegistrarAdopcionRequestDTO;
 import com.gudboys.dto.response.AdopcionResponseDTO;
 import com.gudboys.mapper.AdopcionMapper;
 import com.gudboys.repository.IAdopcionRepository;
 import com.gudboys.repository.IAdoptanteRepository;
 import com.gudboys.repository.IAnimalRepository;
+import com.gudboys.repository.IFichaMedicaRepository;
 import com.gudboys.service.IAdopcionService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -25,6 +27,7 @@ public class AdopcionService implements IAdopcionService {
     private final IAdopcionRepository adopcionRepository;
     private final IAdoptanteRepository adoptanteRepository;
     private final IAnimalRepository animalRepository;
+    private final IFichaMedicaRepository fichaMedicaRepository;
     private final AdopcionMapper adopcionMapper;
 
     @Override
@@ -35,7 +38,10 @@ public class AdopcionService implements IAdopcionService {
                 .orElseThrow(() -> new RuntimeException("Animal no encontrado con id: " + dto.getAnimalId()));
 
         // Se chequea que el animal existe y no sea salvaje (esAdoptable) y que no este bajo tratamiento medico
-        if(!animal.esAdoptable() || animal.getFichaMedica().estaBajoTratamientoActivo()){
+        FichaMedica ficha = fichaMedicaRepository.findByAnimalId(animal.getId())
+                .orElseThrow(() -> new RuntimeException("Ficha médica no encontrada para el animal: " + animal.getId()));
+
+        if(!animal.esAdoptable() || ficha.estaBajoTratamientoActivo()){
             throw new RuntimeException("El animal no esta disponible para adoptar");
         }
 

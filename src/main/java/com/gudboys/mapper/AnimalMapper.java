@@ -9,13 +9,18 @@ import com.gudboys.dto.request.IngresarAnimalRequestDTO;
 import com.gudboys.dto.response.AnimalResponseDTO;
 import com.gudboys.dto.response.EventoResponseDTO;
 import com.gudboys.dto.response.FichaMedicaResponseDTO;
+import com.gudboys.repository.IFichaMedicaRepository;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
 import java.util.stream.Collectors;
 
 @Component
+@RequiredArgsConstructor
 public class AnimalMapper {
+
+    private final IFichaMedicaRepository fichaMedicaRepository;
 
     public Animal toEntity(IngresarAnimalRequestDTO dto) {
         Animal animal;
@@ -51,7 +56,7 @@ public class AnimalMapper {
                 .edad(animal.getEdad())
                 .condicionMedica(animal.getCondicionMedica())
                 .esAdoptable(animal.esAdoptable())
-                .fichaMedicaId(animal.getFichaMedica() != null ? animal.getFichaMedica().getId() : null)
+                .fichaMedicaId(fichaMedicaRepository.findByAnimalId(animal.getId()).map(f -> f.getId()).orElse(null))
                 .build();
     }
 

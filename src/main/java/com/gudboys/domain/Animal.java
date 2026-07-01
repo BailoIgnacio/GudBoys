@@ -32,9 +32,6 @@ public abstract class Animal {
     @Column(nullable = false)
     private Boolean condicionMedica;
 
-    @OneToOne(mappedBy = "animal", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
-    private FichaMedica fichaMedica;
-
     @OneToMany(mappedBy = "animal", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private List<Alarma> alarmas = new ArrayList<>();
 
